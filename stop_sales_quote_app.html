@@ -1189,6 +1189,8 @@ function renderSyncSetup(main){
         <input type="text" id="syncApiBase" value="${escapeAttr(apiBase)}" placeholder="https://your-app.up.railway.app" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false"></div>
       <div class="field"><label>API Key</label>
         <input type="text" id="syncApiKey" value="${escapeAttr(apiKey)}" placeholder="Paste the SYNC_API_KEY from Railway" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false"></div>
+      <button class="btn-ghost" id="testConnectionBtn" style="width:100%;padding:11px;font-size:13.5px;font-weight:700;border-radius:9px;cursor:pointer;margin-bottom:10px;">Test Connection</button>
+      <div id="testConnectionResult"></div>
       <div style="display:flex;gap:8px;margin-top:4px;">
         <button class="btn btn-primary" id="saveSyncSettingsBtn" style="flex:1;width:auto;">Save &amp; Continue</button>
         <button class="btn btn-ghost" id="skipSyncSettingsBtn" style="flex:none;width:auto;padding:14px 18px;">Use this device only</button>
@@ -1211,6 +1213,28 @@ function renderSyncSetup(main){
       localStorage.setItem("SYNC_SETUP_DONE", "1");
     }catch(e){}
     proceedPastSyncSetup();
+  };
+  main.querySelector("#testConnectionBtn").onclick = async ()=>{
+    const resultEl = main.querySelector("#testConnectionResult");
+    const base = main.querySelector("#syncApiBase").value.trim().replace(/\/$/,"");
+    const key = main.querySelector("#syncApiKey").value.trim();
+    if(!base){
+      resultEl.innerHTML = `<div class="hint" style="color:var(--red);margin-bottom:10px;">Enter an API Base URL first.</div>`;
+      return;
+    }
+    resultEl.innerHTML = `<div class="hint" style="margin-bottom:10px;">Testing…</div>`;
+    try{
+      const res = await fetch(`${base}/api/kv/quote-app-types-v1`, { headers: { "x-api-key": key } });
+      if(res.ok){
+        resultEl.innerHTML = `<div class="hint" style="color:#1c7a4d;font-weight:700;margin-bottom:10px;">✓ Connected — URL and API key both work.</div>`;
+      } else if(res.status === 401){
+        resultEl.innerHTML = `<div class="hint" style="color:var(--red);font-weight:700;margin-bottom:10px;">✕ Reached the server, but the API key was rejected (401). Double-check it matches SYNC_API_KEY in Railway's Variables tab exactly — no extra spaces.</div>`;
+      } else {
+        resultEl.innerHTML = `<div class="hint" style="color:var(--red);font-weight:700;margin-bottom:10px;">✕ Server responded with an unexpected error (status ${res.status}).</div>`;
+      }
+    }catch(e){
+      resultEl.innerHTML = `<div class="hint" style="color:var(--red);font-weight:700;margin-bottom:10px;">✕ Couldn't reach that URL at all. Check it's typed correctly and the Railway service is running.</div>`;
+    }
   };
 }
 
