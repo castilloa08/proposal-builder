@@ -19,9 +19,12 @@ app.use(express.json({ limit: "5mb" }));
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes("railway")
-    ? { rejectUnauthorized: false }
-    : false
+  // Railway's auto-attached internal Postgres connection (hostname like
+  // postgres.railway.internal) runs over their private network and does NOT
+  // support SSL — forcing it on breaks every query. Only opt in explicitly
+  // via PGSSL=true if you're pointing this at a Postgres provider that
+  // actually requires SSL (e.g. a public/external connection string).
+  ssl: process.env.PGSSL === "true" ? { rejectUnauthorized: false } : false
 });
 
 const API_KEY = process.env.SYNC_API_KEY;
@@ -50,7 +53,15 @@ function checkAuth(req, res, next) {
   next();
 }
 
-app.get("/health", (req, res) => res.json({ ok: true }));
+app.get("/health", async (req, res) => {
+  try{
+    await pool.query("SELECT 1");
+    res.json({ ok: true, database: "connected" });
+  }catch(e){
+    console.error("Health check DB failure:", e);
+    res.status(500).json({ ok: false, database: "error", message: e.message });
+  }
+});
 
 app.get("/api/kv/:key", checkAuth, async (req, res) => {
   try {
