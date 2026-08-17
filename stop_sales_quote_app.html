@@ -1105,6 +1105,7 @@ function renderLanding(main){
       <div class="hint" style="margin-top:18px;text-align:center;">
         ${apiBase ? `Syncing with ${escapeAttr(apiBase)}` : `Not syncing — saving to this device only`}
         &nbsp;·&nbsp; <a href="#" id="openSyncSettingsLink" style="color:var(--blue);">Sync settings</a>
+        ${apiBase ? `&nbsp;·&nbsp; <a href="#" id="syncNowLink" style="color:var(--blue);">Sync now</a>` : ``}
       </div>
     `;
   }
@@ -1124,6 +1125,13 @@ function renderLanding(main){
   wireLanding(main);
   const syncLink = main.querySelector("#openSyncSettingsLink");
   if(syncLink) syncLink.onclick = (e)=>{ e.preventDefault(); state.view = "syncSetup"; state.syncSetupReturnTo = "landing"; render(); };
+  const syncNowLink = main.querySelector("#syncNowLink");
+  if(syncNowLink) syncNowLink.onclick = async (e)=>{
+    e.preventDefault();
+    showToast("Pushing to server…");
+    await saveAllTypes();
+    showToast("Pushed this device's proposal types to the server");
+  };
 
   const exportBtn = main.querySelector("#exportTypesBtn");
   if(exportBtn) exportBtn.onclick = ()=>{
