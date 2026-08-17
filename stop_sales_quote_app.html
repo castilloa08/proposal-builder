@@ -1186,9 +1186,9 @@ function renderSyncSetup(main){
     <div class="hint">This device isn't running inside Claude, so it needs a sync backend to share proposal types with your other devices. Everything still works fully offline on this device either way — this just keeps devices in sync when there's a connection. Leave this blank to use this device only.</div>
     <div class="card">
       <div class="field"><label>API Base URL</label>
-        <input type="text" id="syncApiBase" value="${escapeAttr(apiBase)}" placeholder="https://your-app.up.railway.app"></div>
+        <input type="text" id="syncApiBase" value="${escapeAttr(apiBase)}" placeholder="https://your-app.up.railway.app" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false"></div>
       <div class="field"><label>API Key</label>
-        <input type="text" id="syncApiKey" value="${escapeAttr(apiKey)}" placeholder="Paste the SYNC_API_KEY from Railway"></div>
+        <input type="text" id="syncApiKey" value="${escapeAttr(apiKey)}" placeholder="Paste the SYNC_API_KEY from Railway" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false"></div>
       <div style="display:flex;gap:8px;margin-top:4px;">
         <button class="btn btn-primary" id="saveSyncSettingsBtn" style="flex:1;width:auto;">Save &amp; Continue</button>
         <button class="btn btn-ghost" id="skipSyncSettingsBtn" style="flex:none;width:auto;padding:14px 18px;">Use this device only</button>
