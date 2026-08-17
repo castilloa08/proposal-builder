@@ -1,0 +1,17 @@
+{
+  "name": "stop-proposal-sync-backend",
+  "version": "1.0.0",
+  "description": "Small key-value sync API for the S.T.O.P. Proposal Builder app on Railway.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "pg": "^8.11.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
