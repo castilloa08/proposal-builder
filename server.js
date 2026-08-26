@@ -214,7 +214,7 @@ app.get("/api/proposals", checkAuth, async (req, res) => {
     if (rep) { params.push(rep); clauses.push(`rep_name = $${params.length}`); }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const result = await pool.query(
-      `SELECT id, status, customer_name, customer_business, proposal_type_name,
+      `SELECT id, client_id, status, customer_name, customer_business, proposal_type_name,
               rep_name, quote_number, total_amount, created_at, updated_at,
               (pdf_data IS NOT NULL) AS has_pdf
        FROM proposals ${where}
@@ -235,7 +235,7 @@ app.get("/api/proposals", checkAuth, async (req, res) => {
 app.get("/api/proposals/:id", checkAuth, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, status, customer_name, customer_business, customer_address,
+      `SELECT id, client_id, status, customer_name, customer_business, customer_address,
               customer_phone, customer_email, proposal_type_name, rep_name,
               quote_number, total_amount, proposal_data, created_at, updated_at,
               (pdf_data IS NOT NULL) AS has_pdf

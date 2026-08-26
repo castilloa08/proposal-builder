@@ -354,13 +354,17 @@ function currentProposalDataSnapshot(){
     selections: state.selections,
     titleChoice: state.titleChoice,
     customTitle: state.customTitle,
+    closingText: state.closingText,
     installTotal: state.installTotal,
+    installDirty: state.installDirty,
     monitorTotal: state.monitorTotal,
+    monitorDirty: state.monitorDirty,
     profitPercent: state.profitPercent,
     laborRate: state.laborRate,
     laborTechs: state.laborTechs,
     laborHours: state.laborHours,
     notes: state.notes,
+    dismissedAutoNoteIds: state.dismissedAutoNoteIds,
     proposalDate: state.proposalDate,
     quoteNumber: state.quoteNumber,
     rep: state.rep,
@@ -1627,9 +1631,10 @@ function renderProposalDetail(main){
       ${customer.business ? `<div class="hint">${escapeAttr(customer.business)}</div>` : ``}
       <div class="hint" style="margin-top:6px;">${escapeAttr(typeName||"")} · ${dateStr}</div>
     </div>
-    <div style="display:flex;gap:10px;margin-top:14px;">
+    <button class="btn btn-primary" id="editSavedProposalBtn" style="width:100%;margin-top:14px;">Edit This Proposal</button>
+    <div style="display:flex;gap:10px;margin-top:10px;">
       <button class="btn btn-ghost" id="viewStoredPdfBtn" style="flex:1;" ${hasPdf?'':'disabled'}>View PDF</button>
-      <button class="btn btn-primary" id="genPartsFromSavedBtn" style="flex:1;">Generate Parts List</button>
+      <button class="btn btn-ghost" id="genPartsFromSavedBtn" style="flex:1;">Generate Parts List</button>
     </div>
     ${!hasPdf ? `<div class="hint" style="margin-top:8px;">No PDF stored for this record yet.</div>` : ``}
   `;
@@ -1637,6 +1642,57 @@ function renderProposalDetail(main){
   const viewBtn = document.getElementById("viewStoredPdfBtn");
   if(viewBtn) viewBtn.onclick = ()=> openStoredProposalPdf(d);
   document.getElementById("genPartsFromSavedBtn").onclick = ()=> generatePartsListForSavedProposal(d);
+  document.getElementById("editSavedProposalBtn").onclick = ()=> editSavedProposal(d);
+}
+
+// Reloads a saved proposal back into the New Proposal screen — same proposal
+// type, customer info, scope selections, pricing, and quote number — so a rep
+// can adjust an existing bid instead of starting over. Tapping "Save Proposal"
+// again afterward updates this same record (matched by clientId) rather than
+// creating a second one.
+function editSavedProposal(detail){
+  const isServer = detail.source === "server";
+  const rec = detail.data;
+  const proposalData = isServer ? rec.proposal_data : rec.proposalData;
+  const clientId = isServer ? rec.client_id : rec.clientId;
+  if(!proposalData){ showToast("No proposal data available for this record"); return; }
+
+  const typeId = proposalData.proposalTypeId;
+  const type = typeId ? state.proposalTypes.find(t=>t.id===typeId) : null;
+  if(!type){
+    showToast(`Can't edit: the original proposal type ("${proposalData.proposalTypeName||'unknown'}") no longer exists on this device.`);
+    return;
+  }
+  normalizeConfig(type.config);
+  state.currentTypeId = type.id;
+  state.config = type.config;
+
+  state.customer = Object.assign({ name:"", business:"", address:"", phone:"", email:"" }, proposalData.customer||{});
+  state.selections = proposalData.selections || {};
+  state.rep = proposalData.rep || "";
+  state.repTitle = proposalData.repTitle || "";
+  state.titleChoice = proposalData.titleChoice || (state.config.titleOptions[0] || "__custom__");
+  state.customTitle = proposalData.customTitle || "";
+  state.closingText = proposalData.closingText || state.config.documentSettings.closingText;
+  state.installTotal = proposalData.installTotal || "";
+  state.installDirty = !!proposalData.installDirty;
+  state.monitorTotal = proposalData.monitorTotal || "";
+  state.monitorDirty = !!proposalData.monitorDirty;
+  state.profitPercent = proposalData.profitPercent || "0";
+  state.laborRate = proposalData.laborRate || "0";
+  state.laborTechs = proposalData.laborTechs || 1;
+  state.laborHours = proposalData.laborHours || 0;
+  state.notes = Array.isArray(proposalData.notes) ? proposalData.notes : [];
+  state.dismissedAutoNoteIds = Array.isArray(proposalData.dismissedAutoNoteIds) ? proposalData.dismissedAutoNoteIds : [];
+  state.proposalDate = proposalData.proposalDate || state.proposalDate;
+  state.quoteNumber = proposalData.quoteNumber || null;
+  state.savedProposalClientId = clientId || null; // re-saving updates this same record instead of creating a new one
+
+  state.view = "app";
+  state.tab = "quote";
+  state.myProposalDetail = null;
+  render();
+  showToast("Editing saved proposal — Save Proposal again to update this record");
 }
 
 function openStoredProposalPdf(detail){
