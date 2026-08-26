@@ -765,6 +765,36 @@ const TYPES_KEY = "quote-app-types-v1";
 const LEGACY_CONFIG_KEY = "quote-app-config-v2";
 const COUNTER_KEY = "quote-app-counter-v1";
 
+/* ---------------- INSTALL APP (Android/Chrome) ----------------
+   Capturing beforeinstallprompt and offering a real "Install App" button
+   ensures the app goes through Chrome's actual install flow — which is what
+   creates a proper standalone app icon on the home screen with no small
+   browser badge on it. (The badge shows up when a page is added via the
+   generic "Add to Home screen" bookmark-shortcut path instead.) This has to
+   be declared before state/render exist below, since Chrome can fire the
+   event at any point after the page starts loading. */
+let deferredInstallPrompt = null;
+
+window.addEventListener("beforeinstallprompt", (e)=>{
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if(typeof state !== "undefined" && state.view === "landing") render();
+});
+
+window.addEventListener("appinstalled", ()=>{
+  deferredInstallPrompt = null;
+  if(typeof state !== "undefined" && state.view === "landing") render();
+  showToast("App installed");
+});
+
+async function triggerInstallPrompt(){
+  if(!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  render();
+}
+
 let state = {
   view: "landing",        // "landing" | "app" | "myProposals"
   tab: "quote",
@@ -1540,6 +1570,7 @@ function render(){
 
 function renderLanding(main){
   let html = `
+    ${deferredInstallPrompt ? `<button class="btn-primary" id="installAppBtn" style="width:100%;margin-bottom:14px;font-weight:700;">⬇️ Install App</button>` : ``}
     <button class="btn btn-ghost" id="openMyProposalsBtn" style="width:100%;margin-bottom:10px;font-weight:700;">📋 My Proposals</button>
     <button class="btn btn-ghost" id="openDraftsBtn" style="width:100%;margin-bottom:10px;font-weight:700;">📝 Drafts</button>
     <button class="btn btn-ghost" id="openAcceptedBtn" style="width:100%;margin-bottom:16px;font-weight:700;">✅ Accepted Proposals</button>
@@ -1618,6 +1649,8 @@ function renderLanding(main){
   if(draftsBtn) draftsBtn.onclick = ()=>{ openMyProposals("draft"); };
   const acceptedBtn = main.querySelector("#openAcceptedBtn");
   if(acceptedBtn) acceptedBtn.onclick = ()=>{ openMyProposals("accepted"); };
+  const installBtn = main.querySelector("#installAppBtn");
+  if(installBtn) installBtn.onclick = triggerInstallPrompt;
   const openDeleteTypesBtn = main.querySelector("#openDeleteTypesBtn");
   if(openDeleteTypesBtn) openDeleteTypesBtn.onclick = ()=>{ state.view = "deleteTypes"; render(); };
   const syncLink = main.querySelector("#openSyncSettingsLink");
