@@ -207,11 +207,16 @@ app.post("/api/proposals", checkAuth, async (req, res) => {
 // List proposals (no PDF bytes / proposal_data — kept light for the list screen).
 app.get("/api/proposals", checkAuth, async (req, res) => {
   try {
-    const { status, rep } = req.query;
+    const { status, rep, q } = req.query;
     const clauses = [];
     const params = [];
     if (status) { params.push(status); clauses.push(`status = $${params.length}`); }
     if (rep) { params.push(rep); clauses.push(`rep_name = $${params.length}`); }
+    if (q) {
+      params.push(`%${q}%`);
+      const idx = params.length;
+      clauses.push(`(customer_name ILIKE $${idx} OR customer_business ILIKE $${idx} OR quote_number ILIKE $${idx})`);
+    }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const result = await pool.query(
       `SELECT id, client_id, status, customer_name, customer_business, proposal_type_name,

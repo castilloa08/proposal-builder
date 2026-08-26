@@ -330,6 +330,16 @@ async function idbGetProposal(clientId){
   });
 }
 
+async function idbDeleteProposal(clientId){
+  const db = await openProposalsDb();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(PROPOSALS_STORE, "readwrite");
+    tx.objectStore(PROPOSALS_STORE).delete(clientId);
+    tx.oncomplete = ()=> resolve(true);
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+
 function uidClient(){
   return "p_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2,8);
 }
@@ -472,10 +482,13 @@ async function syncPendingProposals(){
   return { ok, fail, total: pending.length };
 }
 
-async function fetchServerProposals(status){
+async function fetchServerProposals(status, q){
   const { apiBase, apiKey } = getSyncSettings();
   if(!apiBase) return [];
-  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  const params = new URLSearchParams();
+  if(status) params.set("status", status);
+  if(q) params.set("q", q);
+  const qs = params.toString() ? `?${params.toString()}` : "";
   const res = await fetch(`${apiBase}/api/proposals${qs}`, { headers: { "x-api-key": apiKey } });
   if(!res.ok) throw new Error("Could not load proposals");
   const data = await res.json();
@@ -492,6 +505,17 @@ async function fetchServerProposalDetail(id){
 function serverProposalPdfUrl(id){
   const { apiBase, apiKey } = getSyncSettings();
   return `${apiBase}/api/proposals/${id}/pdf?x-api-key=${encodeURIComponent(apiKey)}`;
+}
+
+async function deleteServerProposal(id){
+  const { apiBase, apiKey } = getSyncSettings();
+  if(!apiBase) throw new Error("Not connected to a server");
+  const res = await fetch(`${apiBase}/api/proposals/${id}`, {
+    method: "DELETE",
+    headers: { "x-api-key": apiKey }
+  });
+  if(!res.ok) throw new Error("Delete failed: " + res.status);
+  return true;
 }
 
 
@@ -619,7 +643,9 @@ let state = {
   view: "landing",        // "landing" | "app" | "myProposals"
   tab: "quote",
   pdfPreview: null,       // { blob, url, filename, kind: "proposal"|"partsList" }
-  myProposals: { items: [], loading: false, error: null, loadedFrom: null },
+  myProposals: { items: {server:[],pending:[]}, loading: false, error: null, mode: "saved", query: "" },
+  myProposalsPendingDeleteId: null,
+  myProposalDetailPendingDelete: false,
   myProposalDetail: null, // { id/clientId, source: "server"|"local", record/data, loading }
   proposalTypes: [],
   currentTypeId: null,
@@ -1522,6 +1548,7 @@ function openMyProposals(mode){
   mode = mode === "draft" ? "draft" : "saved";
   state.view = mode === "draft" ? "drafts" : "myProposals";
   state.myProposalDetail = null;
+  state.myProposalsPendingDeleteId = null;
   state.myProposals.mode = mode;
   render();
   loadMyProposalsList(mode);
@@ -1533,19 +1560,34 @@ async function loadMyProposalsList(mode){
   state.myProposals.loading = true;
   state.myProposals.error = null;
   render();
+  const query = (state.myProposals.query||"").trim();
   let serverItems = [];
   let serverOk = false;
   try{
-    serverItems = await fetchServerProposals(mode);
+    serverItems = await fetchServerProposals(mode, query);
     serverOk = true;
   }catch(e){ /* offline, or sync not configured — fall back to local only */ }
   let localAll = [];
   try{ localAll = await idbGetAllProposals(); }catch(e){}
-  const pendingLocal = localAll.filter(r=>!r.synced && (r.status||"saved") === mode);
+  const qLower = query.toLowerCase();
+  const pendingLocal = localAll.filter(r=>{
+    if((r.status||"saved") !== mode) return false;
+    if(r.synced) return false;
+    if(!qLower) return true;
+    const hay = `${r.customer.name||""} ${r.customer.business||""} ${r.quoteNumber||""}`.toLowerCase();
+    return hay.includes(qLower);
+  });
   state.myProposals.loading = false;
   state.myProposals.error = serverOk ? null : "Showing proposals saved on this device only — couldn't reach the server.";
   state.myProposals.items = { server: serverItems, pending: pendingLocal };
   render();
+}
+
+let myProposalsSearchTimer = null;
+function onMyProposalsSearchInput(value){
+  state.myProposals.query = value;
+  clearTimeout(myProposalsSearchTimer);
+  myProposalsSearchTimer = setTimeout(()=> loadMyProposalsList(state.myProposals.mode), 300);
 }
 
 function renderMyProposals(main){
@@ -1554,7 +1596,21 @@ function renderMyProposals(main){
   const mode = state.myProposals.mode || "saved";
   const isDraftMode = mode === "draft";
   const data = state.myProposals;
-  let html = "";
+
+  // Preserve focus/cursor position across re-renders triggered by the
+  // search debounce — otherwise typing gets interrupted every 300ms.
+  const searchInEl = document.getElementById("myProposalsSearchInput");
+  const hadFocus = document.activeElement === searchInEl;
+  const selStart = hadFocus ? searchInEl.selectionStart : null;
+  const selEnd = hadFocus ? searchInEl.selectionEnd : null;
+
+  let html = `
+    <div class="field" style="margin-bottom:14px;">
+      <input type="text" id="myProposalsSearchInput" placeholder="Search by customer, business, or quote #"
+        value="${escapeAttr(data.query||"")}" style="width:100%;">
+    </div>
+  `;
+
   if(data.loading){
     html += `<div class="loading-row"><div class="spinner"></div> Loading...</div>`;
   } else {
@@ -1573,6 +1629,7 @@ function renderMyProposals(main){
             <div class="type-card-meta">${escapeAttr(r.proposalTypeName||"")} · ${fmtDateShort(r.savedAt)} · saved on this device, will sync when online</div>
             <div class="type-card-actions">
               <button class="btn-primary proposal-open-btn" data-source="local" data-id="${r.clientId}" style="flex:1;padding:10px;font-size:13.5px;">Open</button>
+              <button class="btn-danger-ghost proposal-del-btn" data-source="local" data-id="${r.clientId}">${state.myProposalsPendingDeleteId===`local:${r.clientId}` ? 'Confirm?' : 'Delete'}</button>
             </div>
           </div>
         `;
@@ -1582,9 +1639,12 @@ function renderMyProposals(main){
     const sectionLabel = isDraftMode ? "Drafts" : "Saved Proposals";
     html += `<h2 class="section-title" style="margin-top:${pending.length?'20px':'0'};">${sectionLabel}${server.length?` (${server.length})`:''}</h2>`;
     if(!server.length && !pending.length){
-      html += isDraftMode
-        ? `<div class="empty">No drafts yet. Tap "Save Draft" while building a proposal to see it here.</div>`
-        : `<div class="empty">No saved proposals yet. Generate a proposal PDF and tap "Save Proposal" to see it here.</div>`;
+      const emptyMsg = data.query
+        ? `No results for "${escapeAttr(data.query)}".`
+        : (isDraftMode
+          ? `No drafts yet. Tap "Save Draft" while building a proposal to see it here.`
+          : `No saved proposals yet. Generate a proposal PDF and tap "Save Proposal" to see it here.`);
+      html += `<div class="empty">${emptyMsg}</div>`;
     }
     server.forEach(p=>{
       html += `
@@ -1593,6 +1653,7 @@ function renderMyProposals(main){
           <div class="type-card-meta">${escapeAttr(p.proposal_type_name||"")} · ${fmtDateShort(p.updated_at)} · Quote #${escapeAttr(p.quote_number||"—")}</div>
           <div class="type-card-actions">
             <button class="btn-primary proposal-open-btn" data-source="server" data-id="${p.id}" style="flex:1;padding:10px;font-size:13.5px;">Open</button>
+            <button class="btn-danger-ghost proposal-del-btn" data-source="server" data-id="${p.id}">${state.myProposalsPendingDeleteId===`server:${p.id}` ? 'Confirm?' : 'Delete'}</button>
           </div>
         </div>
       `;
@@ -1600,13 +1661,49 @@ function renderMyProposals(main){
   }
 
   main.innerHTML = html;
+
+  const searchEl = document.getElementById("myProposalsSearchInput");
+  if(searchEl){
+    searchEl.oninput = (e)=> onMyProposalsSearchInput(e.target.value);
+    if(hadFocus){
+      searchEl.focus();
+      try{ searchEl.setSelectionRange(selStart, selEnd); }catch(e){}
+    }
+  }
+
   main.querySelectorAll(".proposal-open-btn").forEach(btn=>{
     btn.onclick = ()=> openProposalDetail(btn.dataset.source, btn.dataset.id);
   });
+  main.querySelectorAll(".proposal-del-btn").forEach(btn=>{
+    btn.onclick = ()=> handleProposalListDelete(btn.dataset.source, btn.dataset.id);
+  });
+}
+
+async function handleProposalListDelete(source, id){
+  const key = `${source}:${id}`;
+  if(state.myProposalsPendingDeleteId !== key){
+    state.myProposalsPendingDeleteId = key;
+    render();
+    return;
+  }
+  state.myProposalsPendingDeleteId = null;
+  try{
+    if(source === "server"){
+      await deleteServerProposal(id);
+    } else {
+      await idbDeleteProposal(id);
+    }
+    showToast("Deleted");
+    loadMyProposalsList(state.myProposals.mode);
+  }catch(e){
+    showToast("Could not delete: " + (e.message||e));
+    render();
+  }
 }
 
 async function openProposalDetail(source, id){
   state.myProposalDetail = { source, id, loading: true };
+  state.myProposalDetailPendingDelete = false;
   render();
   try{
     if(source === "server"){
@@ -1620,6 +1717,30 @@ async function openProposalDetail(source, id){
     state.myProposalDetail = { source, id, loading:false, error: e.message||String(e) };
   }
   render();
+}
+
+async function handleProposalDetailDelete(detail){
+  if(!state.myProposalDetailPendingDelete){
+    state.myProposalDetailPendingDelete = true;
+    render();
+    return;
+  }
+  try{
+    if(detail.source === "server"){
+      await deleteServerProposal(detail.id);
+    } else {
+      await idbDeleteProposal(detail.id);
+    }
+    showToast("Deleted");
+    state.myProposalDetail = null;
+    state.myProposalDetailPendingDelete = false;
+    render();
+    loadMyProposalsList(state.myProposals.mode);
+  }catch(e){
+    state.myProposalDetailPendingDelete = false;
+    showToast("Could not delete: " + (e.message||e));
+    render();
+  }
 }
 
 function renderProposalDetail(main){
@@ -1659,8 +1780,10 @@ function renderProposalDetail(main){
       <button class="btn btn-ghost" id="genPartsFromSavedBtn" style="flex:1;">Generate Parts List</button>
     </div>
     ${!hasPdf ? `<div class="hint" style="margin-top:8px;">${isDraft ? "No PDF yet — this is still a draft." : "No PDF stored for this record yet."}</div>` : ``}
+    <button class="btn-danger-ghost" id="deleteProposalBtn" style="width:100%;margin-top:18px;padding:12px;">${state.myProposalDetailPendingDelete ? "Tap again to confirm delete" : `Delete ${isDraft?'Draft':'Proposal'}`}</button>
   `;
   document.getElementById("detailBackBtn").onclick = ()=>{ state.myProposalDetail = null; render(); };
+  document.getElementById("deleteProposalBtn").onclick = ()=> handleProposalDetailDelete(d);
   const viewBtn = document.getElementById("viewStoredPdfBtn");
   if(viewBtn) viewBtn.onclick = ()=> openStoredProposalPdf(d);
   document.getElementById("genPartsFromSavedBtn").onclick = ()=> generatePartsListForSavedProposal(d);
