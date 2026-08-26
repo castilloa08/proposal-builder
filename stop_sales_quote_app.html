@@ -199,6 +199,7 @@
 <div class="toast" id="toast"></div>
 <div id="pdfPreviewModal"></div>
 <div id="deleteTypeConfirmModal"></div>
+<div id="exitConfirmModal"></div>
 
 <!-- pdf.js, bundled inline so PDF-page-to-image preview rendering works fully offline -->
 <script>
@@ -771,6 +772,7 @@ let state = {
   quickIconCatId: null,
   quickDockCollapsed: false,
   deleteTypeConfirmId: null,
+  exitConfirmOpen: false,
   creatingType: false,
   newTypeName: "",
   newTypeSource: "blank"
@@ -942,10 +944,78 @@ function selectProposalType(id){
 }
 
 function backToLanding(){
+  if(hasUnsavedProposalProgress()){
+    state.exitConfirmOpen = true;
+    render();
+    return;
+  }
   state.view = "landing";
   state.currentTypeId = null;
   state.config = null;
   render();
+}
+
+// True if the rep has typed/selected anything on the New Proposal screen that
+// isn't saved anywhere yet — used to guard against losing progress when
+// backing out to the proposal type list.
+function hasUnsavedProposalProgress(){
+  if(state.tab !== "quote") return false;
+  const c = state.customer || {};
+  if(c.name || c.business || c.address || c.phone || c.email) return true;
+  if(state.notes && state.notes.length) return true;
+  const sel = state.selections || {};
+  for(const catId in sel){
+    const catSel = sel[catId] || {};
+    for(const optId in catSel){
+      const o = catSel[optId];
+      if(o && (o.checked || (o.qty && o.qty > 0))) return true;
+    }
+  }
+  return false;
+}
+
+function forceExitWithoutSaving(){
+  state.exitConfirmOpen = false;
+  state.view = "landing";
+  state.currentTypeId = null;
+  state.config = null;
+  render();
+}
+
+async function saveDraftThenExit(){
+  if(!state.customer.name){
+    state.exitConfirmOpen = false;
+    showToast("Enter a customer name to save a draft, or choose Exit without saving");
+    render();
+    return;
+  }
+  await saveDraftToCloud();
+  state.exitConfirmOpen = false;
+  state.view = "landing";
+  state.currentTypeId = null;
+  state.config = null;
+  render();
+}
+
+function renderExitConfirmModal(){
+  const host = document.getElementById("exitConfirmModal");
+  if(!host) return;
+  if(!state.exitConfirmOpen){ host.innerHTML = ""; host.style.display = "none"; return; }
+  host.style.display = "block";
+  host.innerHTML = `
+    <div class="confirm-modal-backdrop">
+      <div class="confirm-modal">
+        <div class="confirm-modal-title">Leave this proposal?</div>
+        <div class="confirm-modal-body">You've entered information that hasn't been saved yet. Save it as a draft so you can pick it back up later, or exit without saving.</div>
+        <div class="confirm-modal-actions">
+          <button type="button" class="btn btn-ghost" id="exitWithoutSavingBtn">Exit without saving</button>
+          <button type="button" class="btn btn-primary" id="exitSaveDraftBtn" style="flex:1;">Save Draft</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById("exitWithoutSavingBtn").onclick = forceExitWithoutSaving;
+  document.getElementById("exitSaveDraftBtn").onclick = saveDraftThenExit;
 }
 
 function currentProposalTitle(){
@@ -1335,6 +1405,7 @@ function render(){
   const app = document.getElementById("app");
   renderPdfPreviewModal();
   renderDeleteTypeConfirmModal();
+  renderExitConfirmModal();
 
   if(state.view === "syncSetup"){
     app.innerHTML = `
