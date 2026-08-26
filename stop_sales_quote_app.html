@@ -157,6 +157,12 @@
   .pdf-modal-loading{flex:1;display:flex;align-items:center;justify-content:center;gap:10px;color:#fff;font-size:13.5px;}
   .pdf-modal-pages{display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px;}
   .pdf-modal-page-img{width:100%;max-width:100%;height:auto;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.35);}
+  .confirm-modal-backdrop{position:fixed;inset:0;background:rgba(10,16,26,.55);z-index:90;display:flex;align-items:center;justify-content:center;padding:20px;}
+  .confirm-modal{background:#fff;border-radius:14px;width:100%;max-width:380px;padding:22px 20px;box-shadow:0 20px 60px rgba(0,0,0,.35);}
+  .confirm-modal-title{font-weight:800;color:var(--navy);font-size:16px;margin-bottom:8px;}
+  .confirm-modal-body{font-size:14px;color:var(--muted);line-height:1.5;margin-bottom:18px;}
+  .confirm-modal-actions{display:flex;gap:10px;}
+  .confirm-modal-actions .btn{flex:1;}
   .pdf-modal-actions{display:flex;gap:10px;padding:12px 16px;border-top:1px solid #e7e5e0;}
   .pdf-modal-actions .btn{flex:1;}
   .toast.show{opacity:1;}
@@ -192,6 +198,7 @@
 <div class="app" id="app"></div>
 <div class="toast" id="toast"></div>
 <div id="pdfPreviewModal"></div>
+<div id="deleteTypeConfirmModal"></div>
 
 <!-- pdf.js, bundled inline so PDF-page-to-image preview rendering works fully offline -->
 <script>
@@ -763,7 +770,7 @@ let state = {
   adminSectionIndex: 0,
   quickIconCatId: null,
   quickDockCollapsed: false,
-  pendingDeleteType: null,
+  deleteTypeConfirmId: null,
   creatingType: false,
   newTypeName: "",
   newTypeSource: "blank"
@@ -1327,6 +1334,7 @@ function letterFor(i){
 function render(){
   const app = document.getElementById("app");
   renderPdfPreviewModal();
+  renderDeleteTypeConfirmModal();
 
   if(state.view === "syncSetup"){
     app.innerHTML = `
@@ -1385,6 +1393,21 @@ function render(){
     return;
   }
 
+  if(state.view === "deleteTypes"){
+    app.innerHTML = `
+      <div class="topbar">
+        <div class="brand">
+          <button class="back-link" id="backFromDeleteTypesBtn">&larr; Back</button>
+          <div class="s2" style="margin-top:4px;">Delete Proposal Types</div>
+        </div>
+      </div>
+      <main id="main"></main>
+    `;
+    document.getElementById("backFromDeleteTypesBtn").onclick = ()=>{ state.view = "landing"; render(); };
+    renderDeleteTypes(document.getElementById("main"));
+    return;
+  }
+
   const currentType = state.proposalTypes.find(t=>t.id===state.currentTypeId);
   const typeName = currentType ? currentType.name : "Proposal";
 
@@ -1440,7 +1463,6 @@ function renderLanding(main){
         <div class="type-card-meta">${catCount} categor${catCount===1?'y':'ies'} · tap the name above to rename</div>
         <div class="type-card-actions">
           <button class="btn-primary type-open-btn" data-type="${t.id}" style="flex:1;padding:10px;font-size:13.5px;">Open</button>
-          <button class="btn-danger-ghost type-del-btn" data-type="${t.id}">${state.pendingDeleteType===t.id ? 'Confirm?' : 'Delete'}</button>
         </div>
       </div>
     `;
@@ -1486,6 +1508,7 @@ function renderLanding(main){
       <button class="btn-ghost" id="importTypesBtn" style="width:100%;padding:12px;font-size:14px;font-weight:700;border-radius:9px;cursor:pointer;margin-top:8px;">Import proposal types</button>
       <input type="file" id="importTypesFile" accept="application/json,.json" style="display:none;">
       <div class="hint" style="margin-top:8px;">Import adds the file's proposal types alongside whatever's already here — it won't overwrite or delete anything existing.</div>
+      <button class="btn-danger-ghost" id="openDeleteTypesBtn" style="width:100%;padding:12px;font-size:14px;font-weight:700;border-radius:9px;cursor:pointer;margin-top:14px;">Delete proposal types</button>
     </div>
   `;
 
@@ -1495,6 +1518,8 @@ function renderLanding(main){
   if(myProposalsBtn) myProposalsBtn.onclick = ()=>{ openMyProposals("saved"); };
   const draftsBtn = main.querySelector("#openDraftsBtn");
   if(draftsBtn) draftsBtn.onclick = ()=>{ openMyProposals("draft"); };
+  const openDeleteTypesBtn = main.querySelector("#openDeleteTypesBtn");
+  if(openDeleteTypesBtn) openDeleteTypesBtn.onclick = ()=>{ state.view = "deleteTypes"; render(); };
   const syncLink = main.querySelector("#openSyncSettingsLink");
   if(syncLink) syncLink.onclick = (e)=>{ e.preventDefault(); state.view = "syncSetup"; state.syncSetupReturnTo = "landing"; render(); };
   const syncNowLink = main.querySelector("#syncNowLink");
@@ -1625,6 +1650,64 @@ function proceedPastSyncSetup(){
   state.view = "landing";
   state.loaded = false;
   loadAllTypes();
+}
+
+/* ---------------- DELETE PROPOSAL TYPES ---------------- */
+
+function renderDeleteTypes(main){
+  let html = `<div class="hint" style="margin-bottom:14px;">Tap Delete next to a proposal type to remove it. You'll be asked to confirm before anything is deleted.</div>`;
+
+  if(!state.proposalTypes.length){
+    html += `<div class="empty">No proposal types yet.</div>`;
+  }
+  state.proposalTypes.forEach(t=>{
+    const catCount = (t.config && t.config.categories) ? t.config.categories.length : 0;
+    html += `
+      <div class="type-card">
+        <div class="type-card-top"><div style="font-weight:800;">${escapeAttr(t.name)}</div></div>
+        <div class="type-card-meta">${catCount} categor${catCount===1?'y':'ies'}</div>
+        <div class="type-card-actions">
+          <button class="btn-danger-ghost delete-type-row-btn" data-type="${t.id}" style="flex:1;">Delete</button>
+        </div>
+      </div>
+    `;
+  });
+
+  main.innerHTML = html;
+  main.querySelectorAll(".delete-type-row-btn").forEach(btn=>{
+    btn.onclick = ()=>{ state.deleteTypeConfirmId = btn.dataset.type; render(); };
+  });
+}
+
+function renderDeleteTypeConfirmModal(){
+  const host = document.getElementById("deleteTypeConfirmModal");
+  if(!host) return;
+  const id = state.deleteTypeConfirmId;
+  if(!id){ host.innerHTML = ""; host.style.display = "none"; return; }
+  const type = state.proposalTypes.find(t=>t.id===id);
+  if(!type){ state.deleteTypeConfirmId = null; host.innerHTML = ""; host.style.display = "none"; return; }
+
+  host.style.display = "block";
+  host.innerHTML = `
+    <div class="confirm-modal-backdrop">
+      <div class="confirm-modal">
+        <div class="confirm-modal-title">Delete "${escapeAttr(type.name)}"?</div>
+        <div class="confirm-modal-body">This permanently removes this proposal type and its categories, pricing, and bullet library from this device. This can't be undone.</div>
+        <div class="confirm-modal-actions">
+          <button type="button" class="btn btn-ghost" id="cancelDeleteTypeBtn">Cancel</button>
+          <button type="button" class="btn-danger-ghost" id="confirmDeleteTypeBtn" style="flex:1;">Delete</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById("cancelDeleteTypeBtn").onclick = ()=>{ state.deleteTypeConfirmId = null; render(); };
+  document.getElementById("confirmDeleteTypeBtn").onclick = ()=>{
+    state.proposalTypes = state.proposalTypes.filter(x=>x.id!==id);
+    state.deleteTypeConfirmId = null;
+    saveAllTypes();
+    render();
+    showToast("Proposal type deleted");
+  };
 }
 
 /* ---------------- MY PROPOSALS ---------------- */
@@ -2002,22 +2085,6 @@ function wireLanding(main){
   });
   main.querySelectorAll(".type-card-top .type-name-input").forEach(inp=>{
     inp.onclick = (e)=> e.stopPropagation();
-  });
-  main.querySelectorAll(".type-del-btn").forEach(btn=>{
-    btn.onclick = ()=>{
-      const id = btn.dataset.type;
-      if(state.pendingDeleteType === id){
-        state.proposalTypes = state.proposalTypes.filter(x=>x.id!==id);
-        state.pendingDeleteType = null;
-        saveAllTypes(); render();
-      } else {
-        state.pendingDeleteType = id;
-        render();
-        setTimeout(()=>{
-          if(state.pendingDeleteType === id){ state.pendingDeleteType = null; render(); }
-        }, 3000);
-      }
-    };
   });
   const startBtn = main.querySelector("#startCreateTypeBtn");
   if(startBtn) startBtn.onclick = ()=>{ state.creatingType = true; state.newTypeName = ""; state.newTypeSource = "blank"; render(); };
