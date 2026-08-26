@@ -194,6 +194,9 @@
   .quick-modal-price{margin-left:auto;color:var(--muted);font-size:13px;flex:none;}
   .quick-modal-empty{color:var(--muted);font-size:13.5px;padding:14px 4px;text-align:center;}
   .spinner{width:14px;height:14px;border-radius:50%;border:2px solid #ddd;border-top-color:var(--blue);animation:spin .7s linear infinite;}
+  .boot-screen{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--paper);padding:24px;}
+  .boot-logo{width:62vw;max-width:320px;height:auto;display:block;}
+  .boot-screen .spinner{width:22px;height:22px;border-width:3px;}
   @keyframes spin{to{transform:rotate(360deg);}}
 </style>
 </head>
@@ -1481,13 +1484,10 @@ function render(){
 
   if(!state.loaded){
     app.innerHTML = `
-      <div class="topbar">
-        <div class="brand">
-          <div class="s1">SECURITY TELECOMMUNICATIONS OF PORTERVILLE</div>
-          <div class="s2"><span>S</span>.<span>T</span>.<span>O</span>.<span>P</span>. — Proposal Builder</div>
-        </div>
+      <div class="boot-screen">
+        <img src="data:image/png;base64,${BOOT_LOGO_B64}" alt="S.T.O.P." class="boot-logo">
+        <div class="spinner" style="margin-top:20px;"></div>
       </div>
-      <main id="main"><div class="loading-row"><div class="spinner"></div> Loading...</div></main>
     `;
     return;
   }
