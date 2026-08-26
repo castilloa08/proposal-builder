@@ -1474,13 +1474,13 @@ function render(){
     return;
   }
 
-  if(state.view === "myProposals" || state.view === "drafts"){
-    const isDrafts = state.view === "drafts";
+  if(state.view === "myProposals" || state.view === "drafts" || state.view === "accepted"){
+    const screenTitle = state.view === "drafts" ? "Drafts" : (state.view === "accepted" ? "Accepted Proposals" : "My Proposals");
     app.innerHTML = `
       <div class="topbar">
         <div class="brand">
           <button class="back-link" id="backFromMyProposalsBtn">&larr; Back</button>
-          <div class="s2" style="margin-top:4px;">${isDrafts ? "Drafts" : "My Proposals"}</div>
+          <div class="s2" style="margin-top:4px;">${screenTitle}</div>
         </div>
       </div>
       <main id="main"></main>
@@ -1541,7 +1541,8 @@ function render(){
 function renderLanding(main){
   let html = `
     <button class="btn btn-ghost" id="openMyProposalsBtn" style="width:100%;margin-bottom:10px;font-weight:700;">📋 My Proposals</button>
-    <button class="btn btn-ghost" id="openDraftsBtn" style="width:100%;margin-bottom:16px;font-weight:700;">📝 Drafts</button>
+    <button class="btn btn-ghost" id="openDraftsBtn" style="width:100%;margin-bottom:10px;font-weight:700;">📝 Drafts</button>
+    <button class="btn btn-ghost" id="openAcceptedBtn" style="width:100%;margin-bottom:16px;font-weight:700;">✅ Accepted Proposals</button>
     <h2 class="section-title">Proposal Types</h2>
     <div class="hint">Each type has its own categories, pricing, and bullet libraries — pick one to start a proposal, or set one up in Admin Setup once you're inside it.</div>
   `;
@@ -1615,6 +1616,8 @@ function renderLanding(main){
   if(myProposalsBtn) myProposalsBtn.onclick = ()=>{ openMyProposals("saved"); };
   const draftsBtn = main.querySelector("#openDraftsBtn");
   if(draftsBtn) draftsBtn.onclick = ()=>{ openMyProposals("draft"); };
+  const acceptedBtn = main.querySelector("#openAcceptedBtn");
+  if(acceptedBtn) acceptedBtn.onclick = ()=>{ openMyProposals("accepted"); };
   const openDeleteTypesBtn = main.querySelector("#openDeleteTypesBtn");
   if(openDeleteTypesBtn) openDeleteTypesBtn.onclick = ()=>{ state.view = "deleteTypes"; render(); };
   const syncLink = main.querySelector("#openSyncSettingsLink");
@@ -1825,8 +1828,8 @@ function proposalCustomerSummary(customer){
 }
 
 function openMyProposals(mode){
-  mode = mode === "draft" ? "draft" : "saved";
-  state.view = mode === "draft" ? "drafts" : "myProposals";
+  mode = (mode === "draft" || mode === "accepted") ? mode : "saved";
+  state.view = mode === "draft" ? "drafts" : (mode === "accepted" ? "accepted" : "myProposals");
   state.myProposalDetail = null;
   state.myProposalsPendingDeleteId = null;
   state.myProposals.mode = mode;
@@ -1874,6 +1877,7 @@ function renderMyProposals(main){
   if(state.myProposalDetail){ renderProposalDetail(main); return; }
 
   const mode = state.myProposals.mode || "saved";
+  const modeLabels = { saved: "Saved Proposals", draft: "Drafts", accepted: "Accepted Proposals" };
   const isDraftMode = mode === "draft";
   const data = state.myProposals;
 
@@ -1916,14 +1920,16 @@ function renderMyProposals(main){
       });
     }
 
-    const sectionLabel = isDraftMode ? "Drafts" : "Saved Proposals";
+    const sectionLabel = modeLabels[mode] || "Saved Proposals";
     html += `<h2 class="section-title" style="margin-top:${pending.length?'20px':'0'};">${sectionLabel}${server.length?` (${server.length})`:''}</h2>`;
     if(!server.length && !pending.length){
       const emptyMsg = data.query
         ? `No results for "${escapeAttr(data.query)}".`
-        : (isDraftMode
+        : (mode === "draft"
           ? `No drafts yet. Tap "Save Draft" while building a proposal to see it here.`
-          : `No saved proposals yet. Generate a proposal PDF and tap "Save Proposal" to see it here.`);
+          : mode === "accepted"
+            ? `No accepted proposals yet. Open a saved proposal and tap "Proposal Accepted" to move it here.`
+            : `No saved proposals yet. Generate a proposal PDF and tap "Save Proposal" to see it here.`);
       html += `<div class="empty">${emptyMsg}</div>`;
     }
     server.forEach(p=>{
@@ -2036,8 +2042,9 @@ function renderProposalDetail(main){
   }
   const isServer = d.source === "server";
   const rec = d.data;
-  const status = isServer ? rec.status : rec.status;
+  const status = rec.status;
   const isDraft = status === "draft";
+  const isAccepted = status === "accepted";
   const customer = isServer ? {
     name: rec.customer_name, business: rec.customer_business, address: rec.customer_address,
     phone: rec.customer_phone, email: rec.customer_email
@@ -2045,7 +2052,10 @@ function renderProposalDetail(main){
   const typeName = isServer ? rec.proposal_type_name : rec.proposalTypeName;
   const dateStr = isServer ? fmtDateShort(rec.updated_at) : fmtDateShort(rec.savedAt);
   const hasPdf = isServer ? !!rec.has_pdf : !!rec.pdfBase64;
-  const backLabel = isDraft ? "Drafts" : "My Proposals";
+  const backLabels = { draft: "Drafts", accepted: "Accepted Proposals" };
+  const backLabel = backLabels[status] || "My Proposals";
+  const editLabel = isDraft ? "Continue Editing" : "Edit This Proposal";
+  const deleteLabel = isDraft ? "Draft" : (isAccepted ? "Accepted Proposal" : "Proposal");
 
   main.innerHTML = `
     <button class="back-link" id="detailBackBtn">&larr; ${backLabel}</button>
@@ -2053,20 +2063,24 @@ function renderProposalDetail(main){
       <div style="font-weight:800;font-size:16px;">${escapeAttr(customer.name||"(no name)")}</div>
       ${customer.business ? `<div class="hint">${escapeAttr(customer.business)}</div>` : ``}
       <div class="hint" style="margin-top:6px;">${escapeAttr(typeName||"")} · ${dateStr}</div>
+      ${isAccepted ? `<div class="hint" style="margin-top:6px;color:#1a7a3d;font-weight:700;">✅ Accepted</div>` : ``}
     </div>
-    <button class="btn btn-primary" id="editSavedProposalBtn" style="width:100%;margin-top:14px;">${isDraft ? "Continue Editing" : "Edit This Proposal"}</button>
+    <button class="btn btn-primary" id="editSavedProposalBtn" style="width:100%;margin-top:14px;">${editLabel}</button>
+    ${!isDraft && !isAccepted ? `<button class="btn-primary" id="acceptProposalBtn" style="width:100%;margin-top:10px;background:#1a7a3d;">✅ Proposal Accepted</button>` : ``}
     <div style="display:flex;gap:10px;margin-top:10px;">
       <button class="btn btn-ghost" id="viewStoredPdfBtn" style="flex:1;" ${hasPdf?'':'disabled'}>View PDF</button>
       <button class="btn btn-ghost" id="genPartsFromSavedBtn" style="flex:1;">Generate Parts List</button>
     </div>
     ${!hasPdf ? `<div class="hint" style="margin-top:8px;">${isDraft ? "No PDF yet — this is still a draft." : "No PDF stored for this record yet."}</div>` : ``}
-    <button class="btn-danger-ghost" id="deleteProposalBtn" style="width:100%;margin-top:18px;padding:12px;">${state.myProposalDetailPendingDelete ? "Tap again to confirm delete" : `Delete ${isDraft?'Draft':'Proposal'}`}</button>
+    <button class="btn-danger-ghost" id="deleteProposalBtn" style="width:100%;margin-top:18px;padding:12px;">${state.myProposalDetailPendingDelete ? "Tap again to confirm delete" : `Delete ${deleteLabel}`}</button>
   `;
   document.getElementById("detailBackBtn").onclick = ()=>{ state.myProposalDetail = null; render(); };
   document.getElementById("deleteProposalBtn").onclick = ()=> handleProposalDetailDelete(d);
   const viewBtn = document.getElementById("viewStoredPdfBtn");
   if(viewBtn) viewBtn.onclick = ()=> openStoredProposalPdf(d);
   document.getElementById("genPartsFromSavedBtn").onclick = ()=> generatePartsListForSavedProposal(d);
+  const acceptBtn = document.getElementById("acceptProposalBtn");
+  if(acceptBtn) acceptBtn.onclick = ()=> markProposalAccepted(d);
   document.getElementById("editSavedProposalBtn").onclick = ()=> editSavedProposal(d);
 }
 
@@ -2118,6 +2132,55 @@ function editSavedProposal(detail){
   state.myProposalDetail = null;
   render();
   showToast("Editing saved proposal — Save Proposal again to update this record");
+}
+
+// Marks a proposal accepted — moves it out of "My Proposals" and into the
+// "Accepted Proposals" list (server list is filtered by exact status, so
+// changing this one field is all that's needed to relocate it). Reuses
+// pushProposalToServer with data already on hand, so it doesn't require
+// reloading this proposal into the live New Proposal editing state.
+async function markProposalAccepted(detail){
+  const isServer = detail.source === "server";
+  try{
+    if(isServer){
+      const rec = detail.data;
+      const record = {
+        clientId: rec.client_id,
+        status: "accepted",
+        customer: {
+          name: rec.customer_name, business: rec.customer_business, address: rec.customer_address,
+          phone: rec.customer_phone, email: rec.customer_email
+        },
+        proposalTypeName: rec.proposal_type_name,
+        proposalTitle: rec.proposal_title,
+        repName: rec.rep_name,
+        quoteNumber: rec.quote_number,
+        totalAmount: rec.total_amount,
+        proposalData: rec.proposal_data,
+        pdfBase64: null,
+        pdfFilename: null
+      };
+      await pushProposalToServer(record);
+      rec.status = "accepted";
+    } else {
+      const rec = await idbGetProposal(detail.id);
+      if(rec){
+        rec.status = "accepted";
+        rec.synced = false;
+        await idbPutProposal(rec);
+        try{
+          const uploaded = await pushProposalToServer(rec);
+          if(uploaded){ rec.synced = true; rec.serverId = uploaded.id; await idbPutProposal(rec); }
+        }catch(e){ /* stays pending; Sync now will retry */ }
+        detail.data.status = "accepted";
+      }
+    }
+    showToast("Marked as accepted");
+    render();
+    loadMyProposalsList(state.myProposals.mode); // refresh the list in the background so it reflects the new status once the rep goes back
+  }catch(e){
+    showToast("Could not update status: " + (e.message||e));
+  }
 }
 
 function openStoredProposalPdf(detail){
