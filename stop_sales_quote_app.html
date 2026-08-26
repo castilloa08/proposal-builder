@@ -1560,7 +1560,7 @@ function render(){
       <div class="topbar">
         <div class="brand">
           <button class="back-link" id="backFromDeleteTypesBtn">&larr; Back</button>
-          <div class="s2" style="margin-top:4px;">Delete Proposal Types</div>
+          <div class="s2" style="margin-top:4px;">Delete Templates</div>
         </div>
       </div>
       <main id="main"></main>
@@ -1576,7 +1576,7 @@ function render(){
   app.innerHTML = `
     <div class="topbar">
       <div class="brand">
-        <button class="back-link" id="backToLandingBtn">&larr; All Proposal Types</button>
+        <button class="back-link" id="backToLandingBtn">&larr; All Templates</button>
         <div class="s2" style="margin-top:4px;">${escapeAttr(typeName)}</div>
       </div>
       <div class="tabs">
@@ -1609,12 +1609,11 @@ function renderLanding(main){
     <button class="btn btn-ghost" id="openMyProposalsBtn" style="width:100%;margin-bottom:10px;font-weight:700;">📋 My Proposals</button>
     <button class="btn btn-ghost" id="openDraftsBtn" style="width:100%;margin-bottom:10px;font-weight:700;">📝 Drafts</button>
     <button class="btn btn-ghost" id="openAcceptedBtn" style="width:100%;margin-bottom:16px;font-weight:700;">✅ Accepted Proposals</button>
-    <h2 class="section-title">Proposal Types</h2>
-    <div class="hint">Each type has its own categories, pricing, and bullet libraries — pick one to start a proposal, or set one up in Admin Setup once you're inside it.</div>
+    <h2 class="section-title">Proposal Templates</h2>
   `;
 
   if(state.proposalTypes.length === 0){
-    html += `<div class="empty">No proposal types yet. Create one below.</div>`;
+    html += `<div class="empty">No proposal templates yet. Create one below.</div>`;
   }
 
   state.proposalTypes.forEach(t=>{
@@ -1622,7 +1621,7 @@ function renderLanding(main){
     html += `
       <div class="type-card" data-type="${t.id}">
         <div class="type-card-top">
-          <input type="text" class="type-name-input" data-type="${t.id}" value="${escapeAttr(t.name)}" placeholder="Proposal type name">
+          <input type="text" class="type-name-input" data-type="${t.id}" value="${escapeAttr(t.name)}" placeholder="Template name">
         </div>
         <div class="type-card-meta">${catCount} categor${catCount===1?'y':'ies'} · tap the name above to rename</div>
         <div class="type-card-actions">
@@ -1635,7 +1634,7 @@ function renderLanding(main){
   if(state.creatingType){
     html += `
       <div class="card" style="margin-top:14px;">
-        <div class="field"><label>New proposal type name</label>
+        <div class="field"><label>New template name</label>
           <input type="text" id="newTypeNameInp" value="${escapeAttr(state.newTypeName)}" placeholder="e.g. Camera System Proposal"></div>
         <div class="field"><label>Start from</label>
           <select id="newTypeSourceSel">
@@ -1650,7 +1649,7 @@ function renderLanding(main){
       </div>
     `;
   } else {
-    html += `<button class="add-cat-btn" id="startCreateTypeBtn" style="margin-top:14px;">+ Create New Proposal Type</button>`;
+    html += `<button class="add-cat-btn" id="startCreateTypeBtn" style="margin-top:14px;">+ Create New Template</button>`;
   }
 
   if(!IS_CLAUDE_STORAGE){
@@ -1665,14 +1664,12 @@ function renderLanding(main){
   }
 
   html += `
-    <h2 class="section-title" style="margin-top:26px;">Backup &amp; Migration</h2>
-    <div class="hint">Export everything below to a file you can save, then import it anywhere else this app is running (e.g. moving from here into a Railway deployment) — nothing transfers automatically between them otherwise.</div>
+    <h2 class="section-title" style="margin-top:26px;">Add or Remove Templates</h2>
     <div class="card">
-      <button class="btn-ghost" id="exportTypesBtn" style="width:100%;padding:12px;font-size:14px;font-weight:700;border-radius:9px;cursor:pointer;">Export all proposal types</button>
-      <button class="btn-ghost" id="importTypesBtn" style="width:100%;padding:12px;font-size:14px;font-weight:700;border-radius:9px;cursor:pointer;margin-top:8px;">Import proposal types</button>
+      <button class="btn-ghost" id="exportTypesBtn" style="width:100%;padding:12px;font-size:14px;font-weight:700;border-radius:9px;cursor:pointer;">Export templates</button>
+      <button class="btn-ghost" id="importTypesBtn" style="width:100%;padding:12px;font-size:14px;font-weight:700;border-radius:9px;cursor:pointer;margin-top:8px;">Import templates</button>
       <input type="file" id="importTypesFile" accept="application/json,.json" style="display:none;">
-      <div class="hint" style="margin-top:8px;">Import adds the file's proposal types alongside whatever's already here — it won't overwrite or delete anything existing.</div>
-      <button class="btn-danger-ghost" id="openDeleteTypesBtn" style="width:100%;padding:12px;font-size:14px;font-weight:700;border-radius:9px;cursor:pointer;margin-top:14px;">Delete proposal types</button>
+      <button class="btn-danger-ghost" id="openDeleteTypesBtn" style="width:100%;padding:12px;font-size:14px;font-weight:700;border-radius:9px;cursor:pointer;margin-top:14px;">Delete templates</button>
     </div>
   `;
 
@@ -1698,7 +1695,7 @@ function renderLanding(main){
     const result = await syncPendingProposals().catch(()=>({ok:0,fail:0,total:0}));
     showToast(result.total
       ? `Pushed config, plus ${result.ok}/${result.total} saved proposal(s)`
-      : "Pushed this device's proposal types to the server");
+      : "Pushed this device's templates to the server");
   };
 
   const exportBtn = main.querySelector("#exportTypesBtn");
@@ -1715,7 +1712,7 @@ function renderLanding(main){
       a.click();
       document.body.removeChild(a);
       setTimeout(()=>URL.revokeObjectURL(url), 5000);
-      showToast("Exported " + state.proposalTypes.length + " proposal type(s)");
+      showToast("Exported " + state.proposalTypes.length + " template(s)");
     }catch(e){
       showToast("Export failed: " + (e.message||e));
     }
@@ -1733,17 +1730,17 @@ function renderLanding(main){
         try{
           const parsed = JSON.parse(reader.result);
           const incoming = Array.isArray(parsed) ? parsed : parsed.proposalTypes;
-          if(!Array.isArray(incoming)) throw new Error("File doesn't look like a proposal types backup");
+          if(!Array.isArray(incoming)) throw new Error("File doesn't look like a templates backup");
           let count = 0;
           incoming.forEach(t=>{
             if(!t || !t.config) return;
             const config = JSON.parse(JSON.stringify(t.config));
             normalizeConfig(config);
-            state.proposalTypes.push({ id: uid(), name: (t.name||"Imported Proposal Type"), config });
+            state.proposalTypes.push({ id: uid(), name: (t.name||"Imported Template"), config });
             count++;
           });
           saveAllTypes();
-          showToast(`Imported ${count} proposal type(s)`);
+          showToast(`Imported ${count} template(s)`);
           render();
         }catch(err){
           showToast("Import failed: " + (err.message||err));
@@ -1759,7 +1756,7 @@ function renderSyncSetup(main){
   const { apiBase, apiKey } = getSyncSettings();
   main.innerHTML = `
     <h2 class="section-title">Sync Settings</h2>
-    <div class="hint">This device isn't running inside Claude, so it needs a sync backend to share proposal types with your other devices. Everything still works fully offline on this device either way — this just keeps devices in sync when there's a connection. Leave this blank to use this device only.</div>
+    <div class="hint">This device isn't running inside Claude, so it needs a sync backend to share templates with your other devices. Everything still works fully offline on this device either way — this just keeps devices in sync when there's a connection. Leave this blank to use this device only.</div>
     <div class="card">
       <div class="field"><label>API Base URL</label>
         <input type="text" id="syncApiBase" value="${escapeAttr(apiBase)}" placeholder="https://your-app.up.railway.app" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false"></div>
@@ -1823,10 +1820,10 @@ function proceedPastSyncSetup(){
 /* ---------------- DELETE PROPOSAL TYPES ---------------- */
 
 function renderDeleteTypes(main){
-  let html = `<div class="hint" style="margin-bottom:14px;">Tap Delete next to a proposal type to remove it. You'll be asked to confirm before anything is deleted.</div>`;
+  let html = `<div class="hint" style="margin-bottom:14px;">Tap Delete next to a template to remove it. You'll be asked to confirm before anything is deleted.</div>`;
 
   if(!state.proposalTypes.length){
-    html += `<div class="empty">No proposal types yet.</div>`;
+    html += `<div class="empty">No templates yet.</div>`;
   }
   state.proposalTypes.forEach(t=>{
     const catCount = (t.config && t.config.categories) ? t.config.categories.length : 0;
@@ -1860,7 +1857,7 @@ function renderDeleteTypeConfirmModal(){
     <div class="confirm-modal-backdrop">
       <div class="confirm-modal">
         <div class="confirm-modal-title">Delete "${escapeAttr(type.name)}"?</div>
-        <div class="confirm-modal-body">This permanently removes this proposal type and its categories, pricing, and bullet library from this device. This can't be undone.</div>
+        <div class="confirm-modal-body">This permanently removes this template and its categories, pricing, and bullet library from this device. This can't be undone.</div>
         <div class="confirm-modal-actions">
           <button type="button" class="btn btn-ghost" id="cancelDeleteTypeBtn">Cancel</button>
           <button type="button" class="btn-danger-ghost" id="confirmDeleteTypeBtn" style="flex:1;">Delete</button>
@@ -1874,7 +1871,7 @@ function renderDeleteTypeConfirmModal(){
     state.deleteTypeConfirmId = null;
     saveAllTypes();
     render();
-    showToast("Proposal type deleted");
+    showToast("Template deleted");
   };
 }
 
@@ -2167,7 +2164,7 @@ function editSavedProposal(detail){
   const typeId = proposalData.proposalTypeId;
   const type = typeId ? state.proposalTypes.find(t=>t.id===typeId) : null;
   if(!type){
-    showToast(`Can't edit: the original proposal type ("${proposalData.proposalTypeName||'unknown'}") no longer exists on this device.`);
+    showToast(`Can't edit: the original template ("${proposalData.proposalTypeName||'unknown'}") no longer exists on this device.`);
     return;
   }
   normalizeConfig(type.config);
@@ -2278,7 +2275,7 @@ async function generatePartsListForSavedProposal(detail){
   const typeId = proposalData.proposalTypeId;
   const type = typeId ? state.proposalTypes.find(t=>t.id===typeId) : null;
   if(!type){
-    showToast(`Can't generate a parts list: the original proposal type ("${proposalData.proposalTypeName||'unknown'}") no longer exists on this device.`);
+    showToast(`Can't generate a parts list: the original template ("${proposalData.proposalTypeName||'unknown'}") no longer exists on this device.`);
     return;
   }
   normalizeConfig(type.config);
@@ -2305,7 +2302,7 @@ function wireLanding(main){
   main.querySelectorAll(".type-name-input").forEach(inp=>{
     inp.onchange = ()=>{
       const t = state.proposalTypes.find(x=>x.id===inp.dataset.type);
-      if(t){ t.name = inp.value || "Untitled Proposal Type"; saveAllTypes(); }
+      if(t){ t.name = inp.value || "Untitled Template"; saveAllTypes(); }
     };
   });
   main.querySelectorAll(".type-open-btn").forEach(btn=>{
@@ -2324,7 +2321,7 @@ function wireLanding(main){
   if(sourceSel) sourceSel.onchange = e=> state.newTypeSource = e.target.value;
   const confirmBtn = main.querySelector("#confirmCreateTypeBtn");
   if(confirmBtn) confirmBtn.onclick = ()=>{
-    const name = (state.newTypeName||"").trim() || "New Proposal Type";
+    const name = (state.newTypeName||"").trim() || "New Template";
     let config;
     if(state.newTypeSource === "blank"){
       config = makeBlankConfig();
