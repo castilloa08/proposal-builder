@@ -88,6 +88,7 @@
   .bullet-suggest-item{padding:10px 12px;font-size:13.5px;cursor:pointer;border-bottom:1px solid #f0efe9;}
   .bullet-suggest-item:last-child{border-bottom:none;}
   .bullet-suggest-item:active{background:#f4f2ec;}
+  .bullet-suggest-custom{color:var(--blue);font-weight:700;font-style:italic;}
   .bullet-row .bullet-line-rm{flex:none;width:28px;height:28px;border-radius:7px;border:1px solid #f0c6c8;background:#fff;color:var(--red);font-size:14px;line-height:1;cursor:pointer;}
   .bullet-row .bullet-line-add{flex:none;width:28px;height:28px;border-radius:7px;border:1px solid #c7d7ee;background:#eef3fb;color:var(--blue);font-size:15px;line-height:1;cursor:pointer;font-weight:700;}
   .addon-row{display:flex;gap:6px;align-items:center;margin:0 0 8px 20px;}
@@ -1163,7 +1164,7 @@ function renderBulletsEditor(cat, optId, s){
     html += `
       <div class="bullet-row">
         <div class="bullet-suggest-wrap">
-          <input type="text" class="bullet-line-input" autocomplete="off" data-cat="${cat.id}" data-opt="${optId}" data-idx="${idx}" value="${escapeAttr(text)}" placeholder="Type, or tap to pick from the list">
+          <input type="text" class="bullet-line-input" autocomplete="off" readonly data-cat="${cat.id}" data-opt="${optId}" data-idx="${idx}" value="${escapeAttr(text)}" placeholder="Type, or tap to pick from the list">
           <div class="bullet-suggest-list" data-lib='${escapeAttr(JSON.stringify(availableLib))}'></div>
         </div>
         ${hasAddonLib ? `<button type="button" class="bullet-line-add" data-cat="${cat.id}" data-opt="${optId}" data-idx="${idx}" title="Add a priced extra to this sub-bullet">+</button>` : ``}
@@ -3045,7 +3046,7 @@ function renderQuote(main){
         return `
         <div class="bullet-row" style="margin-bottom:6px;">
           <div class="bullet-suggest-wrap">
-            <input type="text" class="note-line-input" autocomplete="off" data-idx="${ni}" value="${escapeAttr(n.text)}" placeholder="Type, or tap to pick a pre-written note">
+            <input type="text" class="note-line-input" autocomplete="off" readonly data-idx="${ni}" value="${escapeAttr(n.text)}" placeholder="Type, or tap to pick a pre-written note">
             <div class="bullet-suggest-list" data-lib='${escapeAttr(JSON.stringify(noteOpts))}'></div>
           </div>
           <button type="button" class="note-line-rm" data-idx="${ni}">✕</button>
@@ -3200,14 +3201,20 @@ function wireSuggestInput(inp, main, onCommit){
   if(listEl){
     try{ lib = JSON.parse(listEl.getAttribute("data-lib") || "[]"); }catch(e){ lib = []; }
   }
+  // The field starts read-only (see the template) so tapping it opens this
+  // dropdown without popping up the on-screen keyboard. The keyboard only
+  // appears once the rep explicitly taps "Type your own…" below — at that
+  // point they've clearly chosen to type, not just browse the list.
   function showSuggestions(){
-    if(!listEl || !lib.length) return;
+    if(!listEl) return;
     const q = inp.value.trim().toLowerCase();
     const matches = lib.filter(b=> !q || b.toLowerCase().includes(q));
-    if(matches.length === 0){ listEl.style.display = "none"; listEl.innerHTML = ""; return; }
-    listEl.innerHTML = matches.map(b=>`<div class="bullet-suggest-item">${escapeAttr(b)}</div>`).join("");
+    let html = matches.map(b=>`<div class="bullet-suggest-item">${escapeAttr(b)}</div>`).join("");
+    html += `<div class="bullet-suggest-item bullet-suggest-custom">✎ Type your own…</div>`;
+    listEl.innerHTML = html;
     listEl.style.display = "block";
-    Array.prototype.forEach.call(listEl.querySelectorAll(".bullet-suggest-item"), (item, i)=>{
+    const items = listEl.querySelectorAll(".bullet-suggest-item:not(.bullet-suggest-custom)");
+    Array.prototype.forEach.call(items, (item, i)=>{
       item.onmousedown = (ev)=>{
         ev.preventDefault(); // fires before blur, so the click registers before the list hides
         inp.value = matches[i];
@@ -3215,9 +3222,19 @@ function wireSuggestInput(inp, main, onCommit){
         onCommit(inp.value, true);
       };
     });
+    const customItem = listEl.querySelector(".bullet-suggest-custom");
+    if(customItem){
+      customItem.onmousedown = (ev)=>{
+        ev.preventDefault();
+        listEl.style.display = "none";
+        inp.readOnly = false;
+        inp.focus();
+      };
+    }
   }
   inp.oninput = ()=>{ onCommit(inp.value, false); showSuggestions(); };
   inp.onfocus = showSuggestions;
+  inp.onclick = ()=>{ if(inp.readOnly) showSuggestions(); };
   inp.onblur = ()=>{ setTimeout(()=>{ if(listEl) listEl.style.display = "none"; }, 150); };
 }
 
