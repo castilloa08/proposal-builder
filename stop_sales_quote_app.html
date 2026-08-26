@@ -380,7 +380,7 @@ function currentProposalTypeName(){
 // Saves (or updates) a proposal locally, then tries to push it to the server
 // right away. If that fails (offline), it stays flagged pending — "Sync now"
 // (which already exists in this app) will retry it along with everything else.
-async function saveProposalRecord({ clientId, pdfBlob, pdfFilename }){
+async function saveProposalRecord({ clientId, pdfBlob, pdfFilename, status }){
   const isNew = !clientId;
   clientId = clientId || uidClient();
   const snapshot = currentProposalDataSnapshot();
@@ -388,7 +388,7 @@ async function saveProposalRecord({ clientId, pdfBlob, pdfFilename }){
 
   const record = {
     clientId,
-    status: "saved",
+    status: status || "saved",
     customer: snapshot.customer,
     proposalTypeName: snapshot.proposalTypeName,
     repName: state.rep || "",
@@ -403,10 +403,15 @@ async function saveProposalRecord({ clientId, pdfBlob, pdfFilename }){
   };
 
   // Keep the existing serverId (if any) so re-saves update the same server row.
+  // If this record already had a PDF saved (e.g. it was finalized, then
+  // re-opened and saved again as a draft edit), don't drop that PDF locally —
+  // the server keeps it too via COALESCE, but the local cache should match.
   if(!isNew){
     try{
       const existing = await idbGetProposal(clientId);
       if(existing && existing.serverId) record.serverId = existing.serverId;
+      if(existing && !record.pdfBase64) record.pdfBase64 = existing.pdfBase64 || null;
+      if(existing && !record.pdfFilename) record.pdfFilename = existing.pdfFilename || null;
     }catch(e){}
   }
 
@@ -467,10 +472,11 @@ async function syncPendingProposals(){
   return { ok, fail, total: pending.length };
 }
 
-async function fetchServerProposals(){
+async function fetchServerProposals(status){
   const { apiBase, apiKey } = getSyncSettings();
   if(!apiBase) return [];
-  const res = await fetch(`${apiBase}/api/proposals`, { headers: { "x-api-key": apiKey } });
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  const res = await fetch(`${apiBase}/api/proposals${qs}`, { headers: { "x-api-key": apiKey } });
   if(!res.ok) throw new Error("Could not load proposals");
   const data = await res.json();
   return data.proposals || [];
@@ -1245,12 +1251,13 @@ function render(){
     return;
   }
 
-  if(state.view === "myProposals"){
+  if(state.view === "myProposals" || state.view === "drafts"){
+    const isDrafts = state.view === "drafts";
     app.innerHTML = `
       <div class="topbar">
         <div class="brand">
           <button class="back-link" id="backFromMyProposalsBtn">&larr; Back</button>
-          <div class="s2" style="margin-top:4px;">My Proposals</div>
+          <div class="s2" style="margin-top:4px;">${isDrafts ? "Drafts" : "My Proposals"}</div>
         </div>
       </div>
       <main id="main"></main>
@@ -1295,7 +1302,8 @@ function render(){
 
 function renderLanding(main){
   let html = `
-    <button class="btn btn-ghost" id="openMyProposalsBtn" style="width:100%;margin-bottom:16px;font-weight:700;">📋 My Proposals</button>
+    <button class="btn btn-ghost" id="openMyProposalsBtn" style="width:100%;margin-bottom:10px;font-weight:700;">📋 My Proposals</button>
+    <button class="btn btn-ghost" id="openDraftsBtn" style="width:100%;margin-bottom:16px;font-weight:700;">📝 Drafts</button>
     <h2 class="section-title">Proposal Types</h2>
     <div class="hint">Each type has its own categories, pricing, and bullet libraries — pick one to start a proposal, or set one up in Admin Setup once you're inside it.</div>
   `;
@@ -1367,7 +1375,9 @@ function renderLanding(main){
   main.innerHTML = html;
   wireLanding(main);
   const myProposalsBtn = main.querySelector("#openMyProposalsBtn");
-  if(myProposalsBtn) myProposalsBtn.onclick = ()=>{ openMyProposals(); };
+  if(myProposalsBtn) myProposalsBtn.onclick = ()=>{ openMyProposals("saved"); };
+  const draftsBtn = main.querySelector("#openDraftsBtn");
+  if(draftsBtn) draftsBtn.onclick = ()=>{ openMyProposals("draft"); };
   const syncLink = main.querySelector("#openSyncSettingsLink");
   if(syncLink) syncLink.onclick = (e)=>{ e.preventDefault(); state.view = "syncSetup"; state.syncSetupReturnTo = "landing"; render(); };
   const syncNowLink = main.querySelector("#syncNowLink");
@@ -1508,26 +1518,30 @@ function fmtDateShort(iso){
   catch(e){ return ""; }
 }
 
-function openMyProposals(){
-  state.view = "myProposals";
+function openMyProposals(mode){
+  mode = mode === "draft" ? "draft" : "saved";
+  state.view = mode === "draft" ? "drafts" : "myProposals";
   state.myProposalDetail = null;
+  state.myProposals.mode = mode;
   render();
-  loadMyProposalsList();
+  loadMyProposalsList(mode);
 }
 
-async function loadMyProposalsList(){
+async function loadMyProposalsList(mode){
+  mode = mode || state.myProposals.mode || "saved";
+  state.myProposals.mode = mode;
   state.myProposals.loading = true;
   state.myProposals.error = null;
   render();
   let serverItems = [];
   let serverOk = false;
   try{
-    serverItems = await fetchServerProposals();
+    serverItems = await fetchServerProposals(mode);
     serverOk = true;
   }catch(e){ /* offline, or sync not configured — fall back to local only */ }
   let localAll = [];
   try{ localAll = await idbGetAllProposals(); }catch(e){}
-  const pendingLocal = localAll.filter(r=>!r.synced);
+  const pendingLocal = localAll.filter(r=>!r.synced && (r.status||"saved") === mode);
   state.myProposals.loading = false;
   state.myProposals.error = serverOk ? null : "Showing proposals saved on this device only — couldn't reach the server.";
   state.myProposals.items = { server: serverItems, pending: pendingLocal };
@@ -1537,6 +1551,8 @@ async function loadMyProposalsList(){
 function renderMyProposals(main){
   if(state.myProposalDetail){ renderProposalDetail(main); return; }
 
+  const mode = state.myProposals.mode || "saved";
+  const isDraftMode = mode === "draft";
   const data = state.myProposals;
   let html = "";
   if(data.loading){
@@ -1563,9 +1579,12 @@ function renderMyProposals(main){
       });
     }
 
-    html += `<h2 class="section-title" style="margin-top:${pending.length?'20px':'0'};">Saved Proposals${server.length?` (${server.length})`:''}</h2>`;
+    const sectionLabel = isDraftMode ? "Drafts" : "Saved Proposals";
+    html += `<h2 class="section-title" style="margin-top:${pending.length?'20px':'0'};">${sectionLabel}${server.length?` (${server.length})`:''}</h2>`;
     if(!server.length && !pending.length){
-      html += `<div class="empty">No saved proposals yet. Generate a proposal PDF and tap "Save Proposal" to see it here.</div>`;
+      html += isDraftMode
+        ? `<div class="empty">No drafts yet. Tap "Save Draft" while building a proposal to see it here.</div>`
+        : `<div class="empty">No saved proposals yet. Generate a proposal PDF and tap "Save Proposal" to see it here.</div>`;
     }
     server.forEach(p=>{
       html += `
@@ -1616,6 +1635,8 @@ function renderProposalDetail(main){
   }
   const isServer = d.source === "server";
   const rec = d.data;
+  const status = isServer ? rec.status : rec.status;
+  const isDraft = status === "draft";
   const customer = isServer ? {
     name: rec.customer_name, business: rec.customer_business, address: rec.customer_address,
     phone: rec.customer_phone, email: rec.customer_email
@@ -1623,20 +1644,21 @@ function renderProposalDetail(main){
   const typeName = isServer ? rec.proposal_type_name : rec.proposalTypeName;
   const dateStr = isServer ? fmtDateShort(rec.updated_at) : fmtDateShort(rec.savedAt);
   const hasPdf = isServer ? !!rec.has_pdf : !!rec.pdfBase64;
+  const backLabel = isDraft ? "Drafts" : "My Proposals";
 
   main.innerHTML = `
-    <button class="back-link" id="detailBackBtn">&larr; My Proposals</button>
+    <button class="back-link" id="detailBackBtn">&larr; ${backLabel}</button>
     <div class="card" style="margin-top:12px;">
       <div style="font-weight:800;font-size:16px;">${escapeAttr(customer.name||"(no name)")}</div>
       ${customer.business ? `<div class="hint">${escapeAttr(customer.business)}</div>` : ``}
       <div class="hint" style="margin-top:6px;">${escapeAttr(typeName||"")} · ${dateStr}</div>
     </div>
-    <button class="btn btn-primary" id="editSavedProposalBtn" style="width:100%;margin-top:14px;">Edit This Proposal</button>
+    <button class="btn btn-primary" id="editSavedProposalBtn" style="width:100%;margin-top:14px;">${isDraft ? "Continue Editing" : "Edit This Proposal"}</button>
     <div style="display:flex;gap:10px;margin-top:10px;">
       <button class="btn btn-ghost" id="viewStoredPdfBtn" style="flex:1;" ${hasPdf?'':'disabled'}>View PDF</button>
       <button class="btn btn-ghost" id="genPartsFromSavedBtn" style="flex:1;">Generate Parts List</button>
     </div>
-    ${!hasPdf ? `<div class="hint" style="margin-top:8px;">No PDF stored for this record yet.</div>` : ``}
+    ${!hasPdf ? `<div class="hint" style="margin-top:8px;">${isDraft ? "No PDF yet — this is still a draft." : "No PDF stored for this record yet."}</div>` : ``}
   `;
   document.getElementById("detailBackBtn").onclick = ()=>{ state.myProposalDetail = null; render(); };
   const viewBtn = document.getElementById("viewStoredPdfBtn");
@@ -2714,11 +2736,7 @@ function renderQuote(main){
   footer.innerHTML = `
     <button class="btn btn-primary" id="genPdfBtn" ${state.generating?'disabled':''}>${state.generating? 'Generating PDF…' : 'Generate Proposal PDF'}</button>
     <button class="btn btn-ghost" id="genPartsBtn" style="margin-top:8px;" ${state.generatingParts?'disabled':''}>${state.generatingParts? 'Generating…' : 'Generate Parts List (Internal)'}</button>
-    <div style="display:flex;gap:8px;margin-top:8px;">
-      <button class="btn btn-ghost" id="exportDraftBtn" style="flex:1;width:auto;font-size:13px;padding:11px;">Save Draft</button>
-      <button class="btn btn-ghost" id="importDraftBtn" style="flex:1;width:auto;font-size:13px;padding:11px;">Load Draft</button>
-      <input type="file" id="importDraftFile" accept="application/json,.json" style="display:none;">
-    </div>
+    <button class="btn btn-ghost" id="saveDraftBtn" style="margin-top:8px;" ${state.savingDraft?'disabled':''}>${state.savingDraft? 'Saving Draft…' : 'Save Draft'}</button>
   `;
   main.appendChild(footer);
 
@@ -3046,18 +3064,8 @@ function wireQuote(main){
   const partsBtn = main.querySelector("#genPartsBtn");
   if(partsBtn) partsBtn.onclick = generatePartsListPdf;
 
-  const exportDraftBtn = main.querySelector("#exportDraftBtn");
-  if(exportDraftBtn) exportDraftBtn.onclick = exportDraft;
-  const importDraftBtn = main.querySelector("#importDraftBtn");
-  const importDraftFileInp = main.querySelector("#importDraftFile");
-  if(importDraftBtn && importDraftFileInp){
-    importDraftBtn.onclick = ()=> importDraftFileInp.click();
-    importDraftFileInp.onchange = (e)=>{
-      const file = e.target.files && e.target.files[0];
-      if(file) importDraft(file, main);
-      importDraftFileInp.value = "";
-    };
-  }
+  const saveDraftBtn = main.querySelector("#saveDraftBtn");
+  if(saveDraftBtn) saveDraftBtn.onclick = saveDraftToCloud;
 
   main.querySelectorAll('.quick-icon-btn').forEach(btn=>{
     btn.onclick = ()=>{
@@ -3110,84 +3118,31 @@ function wireQuote(main){
   });
 }
 
-function exportDraft(){
+// Saves the current in-progress proposal (customer info, scope, pricing —
+// everything needed to reopen it later) straight to the cloud, no PDF
+// required yet. Uses the same clientId as any prior save/draft of this same
+// proposal, so repeated "Save Draft" taps update one record rather than
+// piling up duplicates as a rep works through a bid.
+async function saveDraftToCloud(){
+  if(!state.customer.name){ showToast("Enter a customer name first"); return; }
+  state.savingDraft = true;
+  render();
   try{
-    const currentType = state.proposalTypes.find(t=>t.id===state.currentTypeId);
-    const draft = {
-      draftVersion: 1,
-      exportedAt: new Date().toISOString(),
-      proposalTypeId: state.currentTypeId,
-      proposalTypeName: currentType ? currentType.name : "",
-      customer: state.customer,
-      rep: state.rep,
-      repTitle: state.repTitle,
-      titleChoice: state.titleChoice,
-      customTitle: state.customTitle,
-      selections: state.selections,
-      installTotal: state.installTotal,
-      installDirty: state.installDirty,
-      monitorTotal: state.monitorTotal,
-      monitorDirty: state.monitorDirty,
-      profitPercent: state.profitPercent,
-      laborRate: state.laborRate,
-      laborTechs: state.laborTechs,
-      laborHours: state.laborHours,
-      notes: state.notes,
-      dismissedAutoNoteIds: state.dismissedAutoNoteIds,
-      proposalDate: state.proposalDate
-    };
-    const blob = new Blob([JSON.stringify(draft, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const safeName = (state.customer.name || "draft").replace(/[^a-z0-9]+/gi,"_");
-    const dateStr = new Date().toISOString().slice(0,10);
-    a.href = url;
-    a.download = `Draft_${safeName}_${dateStr}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url), 5000);
-    showToast("Draft saved — reload it anytime with Load Draft");
+    const record = await saveProposalRecord({
+      clientId: state.savedProposalClientId || null,
+      pdfBlob: null,
+      pdfFilename: null,
+      status: "draft"
+    });
+    state.savedProposalClientId = record.clientId;
+    state.savingDraft = false;
+    showToast(record.synced ? "Draft saved" : "Saved locally — will sync when back online");
+    render();
   }catch(e){
+    state.savingDraft = false;
+    render();
     showToast("Could not save draft: " + (e.message||e));
   }
-}
-
-function importDraft(file, main){
-  const reader = new FileReader();
-  reader.onload = ()=>{
-    try{
-      const draft = JSON.parse(reader.result);
-      if(!draft || typeof draft !== "object" || !draft.customer || !draft.selections){
-        throw new Error("File doesn't look like a saved draft");
-      }
-      if(draft.proposalTypeId && draft.proposalTypeId !== state.currentTypeId){
-        showToast(`Note: this draft was saved under "${draft.proposalTypeName||'a different proposal type'}" — some items may not match.`);
-      }
-      state.customer = Object.assign({ name:"", business:"", address:"", phone:"", email:"" }, draft.customer||{});
-      state.rep = draft.rep || "";
-      state.repTitle = draft.repTitle || "";
-      state.titleChoice = draft.titleChoice || (state.config.titleOptions[0] || "__custom__");
-      state.customTitle = draft.customTitle || "";
-      state.selections = draft.selections || {};
-      state.installTotal = draft.installTotal || "";
-      state.installDirty = !!draft.installDirty;
-      state.monitorTotal = draft.monitorTotal || "";
-      state.monitorDirty = !!draft.monitorDirty;
-      state.profitPercent = draft.profitPercent || "0";
-      state.laborRate = draft.laborRate || "0";
-      state.laborTechs = draft.laborTechs || 1;
-      state.laborHours = draft.laborHours || 0;
-      state.notes = Array.isArray(draft.notes) ? draft.notes : [];
-      state.dismissedAutoNoteIds = Array.isArray(draft.dismissedAutoNoteIds) ? draft.dismissedAutoNoteIds : [];
-      state.proposalDate = draft.proposalDate || state.proposalDate;
-      showToast("Draft loaded");
-      renderQuote(main);
-    }catch(e){
-      showToast("Could not load draft: " + (e.message||e));
-    }
-  };
-  reader.readAsText(file);
 }
 
 /* ---------- PDF GENERATION ---------- */
