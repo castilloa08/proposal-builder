@@ -1348,7 +1348,6 @@ function renderLanding(main){
         <div class="type-card-meta">${catCount} categor${catCount===1?'y':'ies'} · tap the name above to rename</div>
         <div class="type-card-actions">
           <button class="btn-primary type-open-btn" data-type="${t.id}" style="flex:1;padding:10px;font-size:13.5px;">Open</button>
-          <button class="btn-ghost type-dup-btn" data-type="${t.id}" style="flex:none;padding:10px 12px;font-size:13px;">Duplicate</button>
           <button class="btn-danger-ghost type-del-btn" data-type="${t.id}">${state.pendingDeleteType===t.id ? 'Confirm?' : 'Delete'}</button>
         </div>
       </div>
@@ -1902,16 +1901,6 @@ function wireLanding(main){
   });
   main.querySelectorAll(".type-card-top .type-name-input").forEach(inp=>{
     inp.onclick = (e)=> e.stopPropagation();
-  });
-  main.querySelectorAll(".type-dup-btn").forEach(btn=>{
-    btn.onclick = ()=>{
-      const t = state.proposalTypes.find(x=>x.id===btn.dataset.type);
-      if(!t) return;
-      const clone = JSON.parse(JSON.stringify(t.config));
-      state.proposalTypes.push({ id: uid(), name: t.name + " (Copy)", config: clone });
-      saveAllTypes();
-      render();
-    };
   });
   main.querySelectorAll(".type-del-btn").forEach(btn=>{
     btn.onclick = ()=>{
