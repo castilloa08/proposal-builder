@@ -2133,9 +2133,10 @@ function renderProposalDetail(main){
     <button class="btn btn-primary" id="editSavedProposalBtn" style="width:100%;margin-top:14px;">${editLabel}</button>
     ${!isDraft && !isAccepted ? `<button class="btn-primary" id="acceptProposalBtn" style="width:100%;margin-top:10px;background:#1a7a3d;">✅ Proposal Accepted</button>` : ``}
     <div style="display:flex;gap:10px;margin-top:10px;">
-      <button class="btn btn-ghost" id="viewStoredPdfBtn" style="flex:1;" ${hasPdf?'':'disabled'}>View PDF</button>
-      <button class="btn btn-ghost" id="genPartsFromSavedBtn" style="flex:1;">Generate Parts List</button>
+      <button class="btn btn-ghost" id="previewStoredPdfBtn" style="flex:1;" ${hasPdf?'':'disabled'}>Preview Proposal</button>
+      <button class="btn btn-ghost" id="viewStoredPdfBtn" style="flex:1;" ${hasPdf?'':'disabled'}>Download PDF</button>
     </div>
+    <button class="btn btn-ghost" id="genPartsFromSavedBtn" style="width:100%;margin-top:10px;">Generate Parts List</button>
     ${!hasPdf ? `<div class="hint" style="margin-top:8px;">${isDraft ? "No PDF yet — this is still a draft." : "No PDF stored for this record yet."}</div>` : ``}
     <button class="btn-danger-ghost" id="deleteProposalBtn" style="width:100%;margin-top:18px;padding:12px;">${state.myProposalDetailPendingDelete ? "Tap again to confirm delete" : `Delete ${deleteLabel}`}</button>
   `;
@@ -2143,6 +2144,8 @@ function renderProposalDetail(main){
   document.getElementById("deleteProposalBtn").onclick = ()=> handleProposalDetailDelete(d);
   const viewBtn = document.getElementById("viewStoredPdfBtn");
   if(viewBtn) viewBtn.onclick = ()=> openStoredProposalPdf(d);
+  const previewBtn = document.getElementById("previewStoredPdfBtn");
+  if(previewBtn) previewBtn.onclick = ()=> previewStoredProposalPdf(d);
   document.getElementById("genPartsFromSavedBtn").onclick = ()=> generatePartsListForSavedProposal(d);
   const acceptBtn = document.getElementById("acceptProposalBtn");
   if(acceptBtn) acceptBtn.onclick = ()=> markProposalAccepted(d);
@@ -2245,6 +2248,30 @@ async function markProposalAccepted(detail){
     loadMyProposalsList(state.myProposals.mode); // refresh the list in the background so it reflects the new status once the rep goes back
   }catch(e){
     showToast("Could not update status: " + (e.message||e));
+  }
+}
+
+// Renders the stored proposal PDF as in-app page images — same preview
+// experience as generating a brand-new proposal — without forcing a
+// download. The actual saved PDF is untouched; this only affects display.
+async function previewStoredProposalPdf(detail){
+  try{
+    let blob;
+    if(detail.source === "server"){
+      const res = await fetch(serverProposalPdfUrl(detail.id));
+      if(!res.ok) throw new Error("Could not load PDF");
+      blob = await res.blob();
+    } else {
+      const rec = detail.data;
+      if(!rec.pdfBase64) throw new Error("No PDF stored for this proposal");
+      const bytes = b64ToBytes(rec.pdfBase64);
+      blob = new Blob([bytes], { type: "application/pdf" });
+    }
+    const custName = (detail.source === "server" ? detail.data.customer_name : detail.data.customer.name) || "customer";
+    const filename = `Proposal_${custName.replace(/[^a-z0-9]+/gi,"_")}.pdf`;
+    openPdfPreview(blob, filename, "savedProposal");
+  }catch(e){
+    showToast("Could not preview: " + (e.message||e));
   }
 }
 
@@ -3778,7 +3805,10 @@ function renderPdfPreviewModal(){
   if(!p){ host.innerHTML = ""; host.style.display = "none"; return; }
   host.style.display = "block";
   const isProposal = p.kind === "proposal";
-  const titleText = p.saved ? "Saved" : (isProposal ? "Proposal Preview" : "Parts List Preview");
+  let titleText;
+  if(p.kind === "partsList") titleText = "Parts List Preview";
+  else if(p.kind === "savedProposal") titleText = "Proposal Preview";
+  else titleText = p.saved ? "Saved" : "Proposal Preview";
 
   let bodyHtml;
   if(p.pagesLoading){
@@ -3807,7 +3837,7 @@ function renderPdfPreviewModal(){
               ${p.saving ? 'Saving…' : (p.saved ? 'Saved ✓' : 'Save Proposal')}
             </button>
           ` : ``}
-          <button type="button" class="btn btn-ghost" id="pdfModalClose">${p.saved ? 'Done' : 'Discard'}</button>
+          <button type="button" class="btn btn-ghost" id="pdfModalClose">${p.kind === "proposal" ? (p.saved ? "Done" : "Discard") : "Close"}</button>
         </div>
       </div>
     </div>
