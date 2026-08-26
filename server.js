@@ -55,6 +55,7 @@ async function ensureTable() {
       customer_phone TEXT,
       customer_email TEXT,
       proposal_type_name TEXT,
+      proposal_title TEXT,
       rep_name TEXT,
       quote_number TEXT,
       total_amount NUMERIC(12,2),
@@ -71,6 +72,8 @@ async function ensureTable() {
     CREATE UNIQUE INDEX IF NOT EXISTS proposals_client_id_idx
     ON proposals (client_id) WHERE client_id IS NOT NULL;
   `);
+  // Migration for databases created before proposal_title existed.
+  await pool.query(`ALTER TABLE proposals ADD COLUMN IF NOT EXISTS proposal_title TEXT;`);
 }
 ensureTable().catch((e) => {
   console.error("Failed to set up database table:", e);
@@ -157,7 +160,7 @@ app.delete("/api/kv/:key", checkAuth, async (req, res) => {
 app.post("/api/proposals", checkAuth, async (req, res) => {
   try {
     const {
-      clientId, status, customer, proposalTypeName, repName,
+      clientId, status, customer, proposalTypeName, proposalTitle, repName,
       quoteNumber, totalAmount, proposalData, pdfBase64, pdfFilename
     } = req.body || {};
 
@@ -170,9 +173,9 @@ app.post("/api/proposals", checkAuth, async (req, res) => {
     const result = await pool.query(
       `INSERT INTO proposals (
          client_id, status, customer_name, customer_business, customer_address,
-         customer_phone, customer_email, proposal_type_name, rep_name,
+         customer_phone, customer_email, proposal_type_name, proposal_title, rep_name,
          quote_number, total_amount, proposal_data, pdf_data, pdf_filename, updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
        ON CONFLICT (client_id) WHERE client_id IS NOT NULL
        DO UPDATE SET
          status = EXCLUDED.status,
@@ -182,6 +185,7 @@ app.post("/api/proposals", checkAuth, async (req, res) => {
          customer_phone = EXCLUDED.customer_phone,
          customer_email = EXCLUDED.customer_email,
          proposal_type_name = EXCLUDED.proposal_type_name,
+         proposal_title = EXCLUDED.proposal_title,
          rep_name = EXCLUDED.rep_name,
          quote_number = EXCLUDED.quote_number,
          total_amount = EXCLUDED.total_amount,
@@ -193,7 +197,7 @@ app.post("/api/proposals", checkAuth, async (req, res) => {
       [
         clientId || null, status || "saved", c.name || null, c.business || null,
         c.address || null, c.phone || null, c.email || null, proposalTypeName || null,
-        repName || null, quoteNumber || null, totalAmount || null,
+        proposalTitle || null, repName || null, quoteNumber || null, totalAmount || null,
         JSON.stringify(proposalData), pdfBuffer, pdfFilename || null
       ]
     );
@@ -219,7 +223,8 @@ app.get("/api/proposals", checkAuth, async (req, res) => {
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const result = await pool.query(
-      `SELECT id, client_id, status, customer_name, customer_business, proposal_type_name,
+      `SELECT id, client_id, status, customer_name, customer_business, customer_address,
+              proposal_type_name, proposal_title,
               rep_name, quote_number, total_amount, created_at, updated_at,
               (pdf_data IS NOT NULL) AS has_pdf
        FROM proposals ${where}
@@ -241,7 +246,7 @@ app.get("/api/proposals/:id", checkAuth, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, client_id, status, customer_name, customer_business, customer_address,
-              customer_phone, customer_email, proposal_type_name, rep_name,
+              customer_phone, customer_email, proposal_type_name, proposal_title, rep_name,
               quote_number, total_amount, proposal_data, created_at, updated_at,
               (pdf_data IS NOT NULL) AS has_pdf
        FROM proposals WHERE id = $1`,

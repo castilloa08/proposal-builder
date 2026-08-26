@@ -491,6 +491,7 @@ async function saveProposalRecord({ clientId, pdfBlob, pdfFilename, status }){
     status: status || "saved",
     customer: snapshot.customer,
     proposalTypeName: snapshot.proposalTypeName,
+    proposalTitle: currentProposalTitle(),
     repName: state.rep || "",
     quoteNumber: state.quoteNumber ? String(state.quoteNumber) : "",
     totalAmount: (parseFloat(state.installTotal)||0) + (parseFloat(state.monitorTotal)||0),
@@ -540,6 +541,7 @@ async function pushProposalToServer(record){
       status: record.status,
       customer: record.customer,
       proposalTypeName: record.proposalTypeName,
+      proposalTitle: record.proposalTitle,
       repName: record.repName,
       quoteNumber: record.quoteNumber,
       totalAmount: record.totalAmount,
@@ -1633,6 +1635,15 @@ function fmtDateShort(iso){
   catch(e){ return ""; }
 }
 
+// "Customer Name - Business Name - Address" for a proposal card's top line,
+// skipping business name when there isn't one.
+function proposalCustomerSummary(customer){
+  const parts = [customer.name || "(no name)"];
+  if(customer.business) parts.push(customer.business);
+  if(customer.address) parts.push(customer.address);
+  return parts.map(escapeAttr).join(" - ");
+}
+
 function openMyProposals(mode){
   mode = mode === "draft" ? "draft" : "saved";
   state.view = mode === "draft" ? "drafts" : "myProposals";
@@ -1714,8 +1725,8 @@ function renderMyProposals(main){
       pending.forEach(r=>{
         html += `
           <div class="type-card" data-local="${r.clientId}">
-            <div class="type-card-top"><div style="font-weight:800;">${escapeAttr(r.customer.name||"(no name)")}</div></div>
-            <div class="type-card-meta">${escapeAttr(r.proposalTypeName||"")} · ${fmtDateShort(r.savedAt)} · saved on this device, will sync when online</div>
+            <div class="type-card-top"><div style="font-weight:800;">${proposalCustomerSummary(r.customer)}</div></div>
+            <div class="type-card-meta">${escapeAttr(r.proposalTitle || r.proposalTypeName || "")} · ${fmtDateShort(r.savedAt)} · saved on this device, will sync when online</div>
             <div class="type-card-actions">
               <button class="btn-primary proposal-open-btn" data-source="local" data-id="${r.clientId}" style="flex:1;padding:10px;font-size:13.5px;">Open</button>
               <button class="btn-danger-ghost proposal-del-btn" data-source="local" data-id="${r.clientId}">${state.myProposalsPendingDeleteId===`local:${r.clientId}` ? 'Confirm?' : 'Delete'}</button>
@@ -1738,8 +1749,8 @@ function renderMyProposals(main){
     server.forEach(p=>{
       html += `
         <div class="type-card" data-server="${p.id}">
-          <div class="type-card-top"><div style="font-weight:800;">${escapeAttr(p.customer_name||"(no name)")}</div></div>
-          <div class="type-card-meta">${escapeAttr(p.proposal_type_name||"")} · ${fmtDateShort(p.updated_at)} · Quote #${escapeAttr(p.quote_number||"—")}</div>
+          <div class="type-card-top"><div style="font-weight:800;">${proposalCustomerSummary({name:p.customer_name, business:p.customer_business, address:p.customer_address})}</div></div>
+          <div class="type-card-meta">${escapeAttr(p.proposal_title || p.proposal_type_name || "")} · ${fmtDateShort(p.updated_at)}</div>
           <div class="type-card-actions">
             <button class="btn-primary proposal-open-btn" data-source="server" data-id="${p.id}" style="flex:1;padding:10px;font-size:13.5px;">Open</button>
             <button class="btn-danger-ghost proposal-del-btn" data-source="server" data-id="${p.id}">${state.myProposalsPendingDeleteId===`server:${p.id}` ? 'Confirm?' : 'Delete'}</button>
