@@ -108,7 +108,7 @@
   .btn-ghost:disabled{color:var(--muted);cursor:not-allowed;}
   .btn-danger-ghost{background:#fff;color:var(--red);border:1.5px solid #f0c6c8;font-weight:600;font-size:13px;padding:8px 12px;width:auto;}
 
-  .footer-bar{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 18px calc(14px + env(safe-area-inset-bottom)) 18px;}
+  .footer-bar{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:100%;max-width:640px;background:#fff;border-top:1px solid var(--line);padding:12px 18px calc(14px + env(safe-area-inset-bottom)) 18px;z-index:40;box-shadow:0 -4px 16px rgba(0,0,0,.06);}
 
   .cat-block{border:1px solid var(--line);border-radius:10px;margin-bottom:14px;overflow:hidden;}
   .cat-head{background:#f4f2ec;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
@@ -2847,7 +2847,6 @@ function renderQuote(main){
   footer.className = "footer-bar";
   footer.innerHTML = `
     <button class="btn btn-primary" id="genPdfBtn" ${state.generating?'disabled':''}>${state.generating? 'Generating PDF…' : 'Generate Proposal PDF'}</button>
-    <button class="btn btn-ghost" id="genPartsBtn" style="margin-top:8px;" ${state.generatingParts?'disabled':''}>${state.generatingParts? 'Generating…' : 'Generate Parts List (Internal)'}</button>
     <button class="btn btn-ghost" id="saveDraftBtn" style="margin-top:8px;" ${state.savingDraft?'disabled':''}>${state.savingDraft? 'Saving Draft…' : 'Save Draft'}</button>
   `;
   main.appendChild(footer);
@@ -3173,8 +3172,6 @@ function wireQuote(main){
 
   const btn = main.querySelector("#genPdfBtn");
   if(btn) btn.onclick = generatePdf;
-  const partsBtn = main.querySelector("#genPartsBtn");
-  if(partsBtn) partsBtn.onclick = generatePartsListPdf;
 
   const saveDraftBtn = main.querySelector("#saveDraftBtn");
   if(saveDraftBtn) saveDraftBtn.onclick = saveDraftToCloud;
@@ -3362,7 +3359,7 @@ function renderPdfPreviewModal(){
         </div>
         <iframe class="pdf-modal-frame" src="${p.url}"></iframe>
         <div class="pdf-modal-actions">
-          <button type="button" class="btn btn-ghost" id="pdfModalDownload">Download</button>
+          ${!isProposal ? `<button type="button" class="btn btn-ghost" id="pdfModalDownload">Download</button>` : ``}
           ${isProposal ? `
             <button type="button" class="btn btn-primary" id="pdfModalSave" ${p.saving||p.saved?'disabled':''}>
               ${p.saving ? 'Saving…' : (p.saved ? 'Saved ✓' : 'Save Proposal')}
@@ -3375,7 +3372,8 @@ function renderPdfPreviewModal(){
   `;
   document.getElementById("pdfModalCloseX").onclick = closePdfPreview;
   document.getElementById("pdfModalClose").onclick = closePdfPreview;
-  document.getElementById("pdfModalDownload").onclick = downloadPreviewedPdf;
+  const downloadBtn = document.getElementById("pdfModalDownload");
+  if(downloadBtn) downloadBtn.onclick = downloadPreviewedPdf;
   const saveBtn = document.getElementById("pdfModalSave");
   if(saveBtn) saveBtn.onclick = saveProposalFromPreview;
 }
