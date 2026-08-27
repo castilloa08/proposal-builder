@@ -701,6 +701,7 @@ function arraysEqual(a,b){
 const DEFAULT_CONFIG = {
   titleOptions: [],
   openingHeaderOptions: [],
+  salesReps: [],
   profitOptions: [],
   laborRates: [],
   noteOptions: [],
@@ -839,7 +840,7 @@ let state = {
   loaded: false,
   selections: {},     // catId -> { optId: {checked, qty, bullets} }
   customer: { name:"", business:"", address:"", phone:"", ext:"", email:"" },
-  rep: "", repTitle: "",
+  rep: "", repTitle: "", repChoice: "",
   titleChoice: "",
   customTitle: "",
   openingHeader: "",
@@ -939,6 +940,7 @@ function normalizeConfig(cfg){
   if(!cfg.laborRates) cfg.laborRates = JSON.parse(JSON.stringify(DEFAULT_CONFIG.laborRates));
   if(!cfg.noteOptions) cfg.noteOptions = JSON.parse(JSON.stringify(DEFAULT_CONFIG.noteOptions));
   if(!cfg.openingHeaderOptions) cfg.openingHeaderOptions = [];
+  if(!cfg.salesReps) cfg.salesReps = [];
 
   // One-time cleanup: strip the old stock example values if a saved type still has them untouched.
   // Guarded so this only ever runs once per config — otherwise retyping the exact same wording
@@ -1034,6 +1036,13 @@ function selectProposalType(id){
   state.titleChoice = state.config.titleOptions[0] || "__custom__";
   state.openingHeader = "";
   state.closingText = state.config.documentSettings.closingText;
+  if(state.config.salesReps && state.config.salesReps.length){
+    state.repChoice = "0";
+    state.rep = state.config.salesReps[0].name;
+    state.repTitle = state.config.salesReps[0].title;
+  } else {
+    state.repChoice = "__custom__";
+  }
   const now = new Date();
   const mm = String(now.getMonth()+1).padStart(2,"0");
   const dd = String(now.getDate()).padStart(2,"0");
@@ -2185,6 +2194,9 @@ function editSavedProposal(detail){
   state.selections = proposalData.selections || {};
   state.rep = proposalData.rep || "";
   state.repTitle = proposalData.repTitle || "";
+  { const reps = state.config.salesReps || [];
+    const matchIdx = reps.findIndex(r=> r.name === state.rep && r.title === state.repTitle);
+    state.repChoice = matchIdx >= 0 ? String(matchIdx) : "__custom__"; }
   state.titleChoice = proposalData.titleChoice || (state.config.titleOptions[0] || "__custom__");
   state.customTitle = proposalData.customTitle || "";
   state.openingHeader = proposalData.openingHeader || "";
@@ -2400,6 +2412,18 @@ function renderDocSettingsSection(ds){
           </div>
         `).join("")}
         <button class="add-opt-btn" data-action="add-title">+ Add title option</button>
+      </div>
+      <div class="field">
+        <label>Sales reps</label>
+        <div class="hint" style="margin-top:-4px;margin-bottom:8px;">Reps pick their name from a dropdown on the New Proposal screen instead of typing it in — this fills in both name and title together.</div>
+        ${(state.config.salesReps||[]).map((r,ri)=>`
+          <div class="admin-opt-top" style="margin-bottom:7px;">
+            <input type="text" class="rep-name-opt" data-idx="${ri}" value="${escapeAttr(r.name)}" placeholder="Rep name" style="flex:1;">
+            <input type="text" class="rep-title-opt" data-idx="${ri}" value="${escapeAttr(r.title)}" placeholder="Title" style="flex:1;">
+            <button class="rm" data-action="del-rep" data-idx="${ri}">✕</button>
+          </div>
+        `).join("")}
+        <button class="add-opt-btn" data-action="add-rep">+ Add sales rep</button>
       </div>
       <div class="row2">
         <div class="field"><label>Installation total label</label><input type="text" id="ds_instLabel" value="${escapeAttr(ds.installationLabel)}"></div>
@@ -2721,6 +2745,29 @@ function wireAdmin(main){
   const addOpeningHeaderBtn = main.querySelector('[data-action="add-opening-header"]');
   if(addOpeningHeaderBtn) addOpeningHeaderBtn.onclick = ()=>{
     state.config.openingHeaderOptions.push("Thank you for the opportunity to provide this proposal for...");
+    saveConfig(); render();
+  };
+  main.querySelectorAll(".rep-name-opt").forEach(inp=>{
+    inp.onchange = ()=>{
+      state.config.salesReps[parseInt(inp.dataset.idx,10)].name = inp.value;
+      saveConfig();
+    };
+  });
+  main.querySelectorAll(".rep-title-opt").forEach(inp=>{
+    inp.onchange = ()=>{
+      state.config.salesReps[parseInt(inp.dataset.idx,10)].title = inp.value;
+      saveConfig();
+    };
+  });
+  main.querySelectorAll('[data-action="del-rep"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      state.config.salesReps.splice(parseInt(btn.dataset.idx,10),1);
+      saveConfig(); render();
+    };
+  });
+  const addRepBtn = main.querySelector('[data-action="add-rep"]');
+  if(addRepBtn) addRepBtn.onclick = ()=>{
+    state.config.salesReps.push({ name: "New Rep", title: "" });
     saveConfig(); render();
   };
   const dsInstLabelInp = main.querySelector("#ds_instLabel");
@@ -3367,10 +3414,25 @@ function renderQuote(main){
       <div class="field"><label>Closing paragraph</label>
         <textarea id="closing_text" rows="3">${escapeAttr(state.closingText)}</textarea>
       </div>
-      <div class="row2">
-        <div class="field"><label>Sales rep name</label><input type="text" id="rep_name" value="${escapeAttr(state.rep)}" placeholder="Sales rep name"></div>
-        <div class="field"><label>Rep title</label><input type="text" id="rep_title" value="${escapeAttr(state.repTitle)}" placeholder="e.g. Sales Representative"></div>
-      </div>
+      ${(state.config.salesReps && state.config.salesReps.length) ? `
+        <div class="field"><label>Sales rep</label>
+          <select id="rep_select">
+            ${state.config.salesReps.map((r,ri)=>`<option value="${ri}" ${state.repChoice===String(ri)?'selected':''}>${escapeAttr(r.name)}${r.title?` — ${escapeAttr(r.title)}`:''}</option>`).join("")}
+            <option value="__custom__" ${state.repChoice==='__custom__'?'selected':''}>Other / not listed…</option>
+          </select>
+          ${state.repChoice==='__custom__' ? `
+            <div class="row2" style="margin-top:10px;">
+              <div class="field"><label>Sales rep name</label><input type="text" id="rep_name" value="${escapeAttr(state.rep)}" placeholder="Sales rep name"></div>
+              <div class="field"><label>Rep title</label><input type="text" id="rep_title" value="${escapeAttr(state.repTitle)}" placeholder="e.g. Sales Representative"></div>
+            </div>
+          ` : ``}
+        </div>
+      ` : `
+        <div class="row2">
+          <div class="field"><label>Sales rep name</label><input type="text" id="rep_name" value="${escapeAttr(state.rep)}" placeholder="Sales rep name"></div>
+          <div class="field"><label>Rep title</label><input type="text" id="rep_title" value="${escapeAttr(state.repTitle)}" placeholder="e.g. Sales Representative"></div>
+        </div>
+      `}
     </div>
   `;
 
@@ -3546,8 +3608,20 @@ function wireQuote(main){
   const customTitleInp = main.querySelector("#p_title_custom");
   if(customTitleInp) customTitleInp.oninput = e=> state.customTitle = e.target.value;
   main.querySelector("#closing_text").oninput = e=> state.closingText = e.target.value;
-  main.querySelector("#rep_name").oninput = e=> state.rep = e.target.value;
-  main.querySelector("#rep_title").oninput = e=> state.repTitle = e.target.value;
+  const repSelect = main.querySelector("#rep_select");
+  if(repSelect) repSelect.onchange = e=>{
+    state.repChoice = e.target.value;
+    if(e.target.value !== "__custom__"){
+      const r = state.config.salesReps[parseInt(e.target.value,10)];
+      state.rep = r.name;
+      state.repTitle = r.title;
+    }
+    renderQuote(main);
+  };
+  const repNameInp = main.querySelector("#rep_name");
+  if(repNameInp) repNameInp.oninput = e=> state.rep = e.target.value;
+  const repTitleInp = main.querySelector("#rep_title");
+  if(repTitleInp) repTitleInp.oninput = e=> state.repTitle = e.target.value;
 
   main.querySelector("#install_total").oninput = e=>{ state.installTotal = e.target.value; state.installDirty = true; };
   const monitorTotalInp = main.querySelector("#monitor_total");
