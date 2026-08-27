@@ -44,6 +44,9 @@
   .type-card-top .type-name-input{font-size:16px;font-weight:700;color:var(--navy);border:none;border-bottom:1.5px dashed #c9c6bc;padding:2px 0 4px 0;width:100%;background:transparent;}
   .type-card-top .type-name-input:focus{border-bottom-color:var(--blue);border-bottom-style:solid;}
   .type-card-meta{font-size:12px;color:var(--muted);margin-bottom:10px;}
+  .sync-badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;margin-bottom:10px;}
+  .sync-badge-pending{background:#fdf0dc;color:#8a5a10;}
+  .sync-badge-synced{background:#e3f3e9;color:#1a7a3d;}
   .type-card-actions{display:flex;gap:8px;}
   .brand .s1{font-size:11px;letter-spacing:.14em;color:#9fb3cc;font-weight:600;}
   .brand .s2{font-size:19px;font-weight:800;letter-spacing:.01em;}
@@ -2154,7 +2157,8 @@ function renderMyProposals(main){
         html += `
           <div class="type-card" data-local="${r.clientId}">
             <div class="type-card-top"><div style="font-weight:800;">${proposalCustomerSummary(r.customer)}</div></div>
-            <div class="type-card-meta">${escapeAttr(r.proposalTitle || r.proposalTypeName || "")} · ${fmtDateShort(r.savedAt)} · saved on this device, will sync when online</div>
+            <div class="type-card-meta">${escapeAttr(r.proposalTitle || r.proposalTypeName || "")} · ${fmtDateShort(r.savedAt)}</div>
+            <div class="sync-badge sync-badge-pending">Not synced yet — saved on this device only</div>
             <div class="type-card-actions">
               <button class="btn-primary proposal-open-btn" data-source="local" data-id="${r.clientId}" style="flex:1;padding:10px;font-size:13.5px;">Open</button>
               <button class="btn-danger-ghost proposal-del-btn" data-source="local" data-id="${r.clientId}">${state.myProposalsPendingDeleteId===`local:${r.clientId}` ? 'Confirm?' : 'Delete'}</button>
@@ -2181,6 +2185,7 @@ function renderMyProposals(main){
         <div class="type-card" data-server="${p.id}">
           <div class="type-card-top"><div style="font-weight:800;">${proposalCustomerSummary({name:p.customer_name, business:p.customer_business, address:p.customer_address})}</div></div>
           <div class="type-card-meta">${escapeAttr(p.proposal_title || p.proposal_type_name || "")} · ${fmtDateShort(p.updated_at)}</div>
+          <div class="sync-badge sync-badge-synced">Synced to the cloud</div>
           <div class="type-card-actions">
             <button class="btn-primary proposal-open-btn" data-source="server" data-id="${p.id}" style="flex:1;padding:10px;font-size:13.5px;">Open</button>
             <button class="btn-danger-ghost proposal-del-btn" data-source="server" data-id="${p.id}">${state.myProposalsPendingDeleteId===`server:${p.id}` ? 'Confirm?' : 'Delete'}</button>
@@ -2312,6 +2317,7 @@ function renderProposalDetail(main){
       ${customer.business ? `<div class="hint">${escapeAttr(customer.business)}</div>` : ``}
       <div class="hint" style="margin-top:6px;">${escapeAttr(typeName||"")} · ${dateStr}</div>
       ${isAccepted ? `<div class="hint" style="margin-top:6px;color:#1a7a3d;font-weight:700;">✅ Accepted</div>` : ``}
+      <div class="sync-badge ${isServer ? 'sync-badge-synced' : 'sync-badge-pending'}" style="margin-top:8px;margin-bottom:0;">${isServer ? 'Synced to the cloud' : 'Not synced yet — saved on this device only'}</div>
     </div>
     <button class="btn btn-primary" id="editSavedProposalBtn" style="width:100%;margin-top:14px;">${editLabel}</button>
     ${!isDraft && !isAccepted ? `<button class="btn-primary" id="acceptProposalBtn" style="width:100%;margin-top:10px;background:#1a7a3d;">✅ Proposal Accepted</button>` : ``}
@@ -4609,6 +4615,48 @@ async function generatePdf(){
   }finally{
     state.generating = false;
     render();
+  }
+}
+
+/* ---------------- LIGHTWEIGHT AUTO-REFRESH ----------------
+   If this tab/app sits in the background (switched away from, or the
+   device's screen locks) for more than a minute, silently re-pull the
+   latest data when it comes back to the foreground. This shrinks the window
+   where a device is working from a stale in-memory copy — the main defense
+   against overwriting someone else's changes is still the conflict check in
+   saveAllTypes(), this just makes hitting that conflict less likely.
+   Skipped while actively in the New Proposal / Admin Setup screen, since
+   silently swapping out state.proposalTypes out from under an in-progress
+   edit there could detach what's on screen from what actually gets saved. */
+let appHiddenAt = null;
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "hidden"){
+    appHiddenAt = Date.now();
+  } else if(document.visibilityState === "visible"){
+    const wasHiddenFor = appHiddenAt ? (Date.now() - appHiddenAt) : 0;
+    appHiddenAt = null;
+    if(wasHiddenFor > 60000) silentlyRefreshIfSafe();
+  }
+});
+
+async function silentlyRefreshIfSafe(){
+  if(!state.loaded) return;
+  if(state.view === "app") return; // don't disrupt an in-progress proposal/admin edit
+
+  try{
+    const res = await window.storage.get(TYPES_KEY, true);
+    if(res && res.value && res.updatedAt && res.updatedAt !== typesServerUpdatedAt){
+      state.proposalTypes = JSON.parse(res.value);
+      state.proposalTypes.forEach(t=> normalizeConfig(t.config));
+      typesServerUpdatedAt = res.updatedAt;
+      render();
+    }
+  }catch(e){ /* offline, or sync not configured — silently skip */ }
+
+  if(state.view === "myProposals" || state.view === "drafts" || state.view === "accepted"){
+    loadMyProposalsList(state.myProposals.mode);
+  } else if(state.view === "repPicker"){
+    loadRepPicker(state.repPicker.mode);
   }
 }
 
