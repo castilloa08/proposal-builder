@@ -2134,10 +2134,12 @@ function renderProposalDetail(main){
     ${!isDraft && !isAccepted ? `<button class="btn-primary" id="acceptProposalBtn" style="width:100%;margin-top:10px;background:#1a7a3d;">✅ Proposal Accepted</button>` : ``}
     <div style="display:flex;gap:10px;margin-top:10px;">
       <button class="btn btn-ghost" id="previewStoredPdfBtn" style="flex:1;" ${hasPdf?'':'disabled'}>Preview Proposal</button>
-      <button class="btn btn-ghost" id="viewStoredPdfBtn" style="flex:1;" ${hasPdf?'':'disabled'}>Download PDF</button>
+      <button class="btn btn-ghost" id="viewStoredPdfBtn" style="flex:1;" ${hasPdf?'':'disabled'}>Download Proposal</button>
     </div>
-    <button class="btn btn-ghost" id="genPartsFromSavedBtn" style="width:100%;margin-top:10px;">Preview Parts List</button>
-    <button class="btn btn-ghost" id="downloadPartsFromSavedBtn" style="width:100%;margin-top:8px;">Download Parts List</button>
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button class="btn btn-ghost" id="genPartsFromSavedBtn" style="flex:1;">Preview Parts List</button>
+      <button class="btn btn-ghost" id="downloadPartsFromSavedBtn" style="flex:1;">Download Parts List</button>
+    </div>
     ${!hasPdf ? `<div class="hint" style="margin-top:8px;">${isDraft ? "No PDF yet — this is still a draft." : "No PDF stored for this record yet."}</div>` : ``}
     <button class="btn-danger-ghost" id="deleteProposalBtn" style="width:100%;margin-top:18px;padding:12px;">${state.myProposalDetailPendingDelete ? "Tap again to confirm delete" : `Delete ${deleteLabel}`}</button>
   `;
