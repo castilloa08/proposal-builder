@@ -838,7 +838,7 @@ let state = {
   config: null,
   loaded: false,
   selections: {},     // catId -> { optId: {checked, qty, bullets} }
-  customer: { name:"", business:"", address:"", phone:"", email:"" },
+  customer: { name:"", business:"", address:"", phone:"", ext:"", email:"" },
   rep: "", repTitle: "",
   titleChoice: "",
   customTitle: "",
@@ -1010,7 +1010,7 @@ async function saveAllTypes(){
 function resetQuoteState(){
   state.tab = "quote";
   state.selections = {};
-  state.customer = { name:"", business:"", address:"", phone:"", email:"" };
+  state.customer = { name:"", business:"", address:"", phone:"", ext:"", email:"" };
   state.rep = ""; state.repTitle = "";
   state.customTitle = "";
   state.installTotal = ""; state.installDirty = false;
@@ -2181,7 +2181,7 @@ function editSavedProposal(detail){
   state.currentTypeId = type.id;
   state.config = type.config;
 
-  state.customer = Object.assign({ name:"", business:"", address:"", phone:"", email:"" }, proposalData.customer||{});
+  state.customer = Object.assign({ name:"", business:"", address:"", phone:"", ext:"", email:"" }, proposalData.customer||{});
   state.selections = proposalData.selections || {};
   state.rep = proposalData.rep || "";
   state.repTitle = proposalData.repTitle || "";
@@ -2317,7 +2317,7 @@ async function generatePartsListForSavedProposal(detail, mode){
   state.currentTypeId = type.id;
   state.config = type.config;
 
-  state.customer = Object.assign({ name:"", business:"", address:"", phone:"", email:"" }, proposalData.customer||{});
+  state.customer = Object.assign({ name:"", business:"", address:"", phone:"", ext:"", email:"" }, proposalData.customer||{});
   state.selections = proposalData.selections || {};
   state.rep = proposalData.rep || "";
   state.repTitle = proposalData.repTitle || "";
@@ -3227,11 +3227,13 @@ function renderQuote(main){
       <div class="row2">
         <div class="field"><label>Phone number</label>
           <input type="tel" id="c_phone" value="${escapeAttr(state.customer.phone)}" placeholder="(555) 555-0123"></div>
-        <div class="field"><label>Email</label>
-          <div class="bullet-suggest-wrap">
-            <input type="email" id="c_email" autocomplete="off" value="${escapeAttr(state.customer.email)}" placeholder="name@email.com">
-            <div class="bullet-suggest-list" id="emailSuggestList"></div>
-          </div>
+        <div class="field"><label>Extension (optional)</label>
+          <input type="text" id="c_ext" inputmode="numeric" value="${escapeAttr(state.customer.ext)}" placeholder="e.g. 204"></div>
+      </div>
+      <div class="field"><label>Email</label>
+        <div class="bullet-suggest-wrap">
+          <input type="email" id="c_email" autocomplete="off" value="${escapeAttr(state.customer.email)}" placeholder="name@email.com">
+          <div class="bullet-suggest-list" id="emailSuggestList"></div>
         </div>
       </div>
       <div class="field"><label>Proposal date</label>
@@ -3512,6 +3514,11 @@ function wireQuote(main){
     const formatted = formatPhoneNumber(e.target.value);
     e.target.value = formatted;
     state.customer.phone = formatted;
+  };
+  main.querySelector("#c_ext").oninput = e=>{
+    const digitsOnly = e.target.value.replace(/\D/g,"");
+    e.target.value = digitsOnly;
+    state.customer.ext = digitsOnly;
   };
   wireEmailSuggest(main.querySelector("#c_email"), main.querySelector("#emailSuggestList"));
   main.querySelector("#c_date").oninput = e=> state.proposalDate = e.target.value;
@@ -4065,7 +4072,10 @@ async function generatePartsListPdf(mode){
         y -= 14;
       });
     }
-    if(state.customer.phone){ page.drawText(state.customer.phone, { x: marginX, y, size: 10.5, font, color: black }); y -= 14; }
+    if(state.customer.phone){
+      const phoneLine = state.customer.phone + (state.customer.ext ? ` ext. ${state.customer.ext}` : "");
+      page.drawText(phoneLine, { x: marginX, y, size: 10.5, font, color: black }); y -= 14;
+    }
     if(state.customer.email){ page.drawText(state.customer.email, { x: marginX, y, size: 10.5, font, color: black }); y -= 14; }
 
     y -= 8;
@@ -4207,7 +4217,8 @@ async function generatePdf(){
       });
     }
     if(state.customer.phone){
-      page.drawText(state.customer.phone, { x: marginX, y, size: 10.5, font, color: black });
+      const phoneLine = state.customer.phone + (state.customer.ext ? ` ext. ${state.customer.ext}` : "");
+      page.drawText(phoneLine, { x: marginX, y, size: 10.5, font, color: black });
       y -= 14;
     }
     if(state.customer.email){
