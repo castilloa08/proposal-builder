@@ -3451,6 +3451,19 @@ function renderQuote(main){
   if(!state.installDirty) state.installTotal = (defaults.installation * markup + laborTotal).toFixed(2);
   if(!state.monitorDirty) state.monitorTotal = defaults.monthly.toFixed(2);
 
+  // Keep the selected rep's name/title/font in sync with Admin Setup — if an
+  // admin renames a rep or changes their font after this proposal already
+  // had that rep selected, this picks up the change automatically instead of
+  // silently printing whatever was cached when the rep was first selected.
+  if(state.repChoice && state.repChoice !== "__custom__" && state.config.salesReps){
+    const selectedRep = state.config.salesReps[parseInt(state.repChoice,10)];
+    if(selectedRep){
+      state.rep = selectedRep.name;
+      state.repTitle = selectedRep.title;
+      state.repFont = selectedRep.font || "standard";
+    }
+  }
+
   const titleOptions = state.config.titleOptions||[];
   const openingHeaderOptions = state.config.openingHeaderOptions||[];
 
