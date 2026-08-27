@@ -3157,6 +3157,51 @@ function formatPhoneNumber(raw){
   return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
 }
 
+const COMMON_EMAIL_DOMAINS = [
+  "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com",
+  "aol.com", "live.com", "msn.com", "comcast.net", "att.net", "verizon.net", "sbcglobal.net"
+];
+
+// Shows a dropdown of common domain completions once the rep types "@" —
+// tapping one fills in the rest of the address instantly. Typing past the
+// "@" filters the list to matching domains; nothing shows before an "@".
+function wireEmailSuggest(inp, listEl){
+  if(!inp || !listEl) return;
+
+  function showSuggestions(){
+    const val = inp.value;
+    const atIdx = val.lastIndexOf("@");
+    if(atIdx === -1){
+      listEl.style.display = "none";
+      listEl.innerHTML = "";
+      return;
+    }
+    const localPart = val.slice(0, atIdx);
+    const typedDomain = val.slice(atIdx+1).toLowerCase();
+    const matches = COMMON_EMAIL_DOMAINS.filter(d => !typedDomain || d.startsWith(typedDomain));
+    if(!localPart || matches.length === 0){
+      listEl.style.display = "none";
+      listEl.innerHTML = "";
+      return;
+    }
+    listEl.innerHTML = matches.map(d=>`<div class="bullet-suggest-item">${escapeAttr(localPart)}@${escapeAttr(d)}</div>`).join("");
+    listEl.style.display = "block";
+    Array.prototype.forEach.call(listEl.querySelectorAll(".bullet-suggest-item"), (item, i)=>{
+      item.onmousedown = (ev)=>{
+        ev.preventDefault(); // fires before blur, so the tap registers before the list hides
+        const completed = `${localPart}@${matches[i]}`;
+        inp.value = completed;
+        state.customer.email = completed;
+        listEl.style.display = "none";
+      };
+    });
+  }
+
+  inp.oninput = ()=>{ state.customer.email = inp.value; showSuggestions(); };
+  inp.onfocus = showSuggestions;
+  inp.onblur = ()=>{ setTimeout(()=>{ listEl.style.display = "none"; }, 150); };
+}
+
 /* ---------- QUOTE VIEW ---------- */
 
 function renderQuote(main){
@@ -3183,7 +3228,11 @@ function renderQuote(main){
         <div class="field"><label>Phone number</label>
           <input type="tel" id="c_phone" value="${escapeAttr(state.customer.phone)}" placeholder="(555) 555-0123"></div>
         <div class="field"><label>Email</label>
-          <input type="email" id="c_email" value="${escapeAttr(state.customer.email)}" placeholder="name@email.com"></div>
+          <div class="bullet-suggest-wrap">
+            <input type="email" id="c_email" autocomplete="off" value="${escapeAttr(state.customer.email)}" placeholder="name@email.com">
+            <div class="bullet-suggest-list" id="emailSuggestList"></div>
+          </div>
+        </div>
       </div>
       <div class="field"><label>Proposal date</label>
         <input type="date" id="c_date" value="${escapeAttr(state.proposalDate)}"></div>
@@ -3464,7 +3513,7 @@ function wireQuote(main){
     e.target.value = formatted;
     state.customer.phone = formatted;
   };
-  main.querySelector("#c_email").oninput = e=> state.customer.email = e.target.value;
+  wireEmailSuggest(main.querySelector("#c_email"), main.querySelector("#emailSuggestList"));
   main.querySelector("#c_date").oninput = e=> state.proposalDate = e.target.value;
   main.querySelector("#p_opening_select").onchange = e=>{
     const idx = e.target.value;
