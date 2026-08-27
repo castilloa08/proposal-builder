@@ -1606,9 +1606,9 @@ function render(){
 function renderLanding(main){
   let html = `
     ${deferredInstallPrompt ? `<button class="btn-primary" id="installAppBtn" style="width:100%;margin-bottom:14px;font-weight:700;">⬇️ Install App</button>` : ``}
-    <button class="btn btn-ghost" id="openMyProposalsBtn" style="width:100%;margin-bottom:10px;font-weight:700;">📋 My Proposals</button>
-    <button class="btn btn-ghost" id="openDraftsBtn" style="width:100%;margin-bottom:10px;font-weight:700;">📝 Drafts</button>
-    <button class="btn btn-ghost" id="openAcceptedBtn" style="width:100%;margin-bottom:16px;font-weight:700;">✅ Accepted Proposals</button>
+    <button class="btn btn-ghost" id="openMyProposalsBtn" style="width:100%;margin-bottom:10px;font-weight:700;">My Proposals</button>
+    <button class="btn btn-ghost" id="openDraftsBtn" style="width:100%;margin-bottom:10px;font-weight:700;">Drafts</button>
+    <button class="btn btn-ghost" id="openAcceptedBtn" style="width:100%;margin-bottom:16px;font-weight:700;">Accepted Proposals</button>
     <h2 class="section-title">Proposal Templates</h2>
   `;
 
@@ -1617,13 +1617,11 @@ function renderLanding(main){
   }
 
   state.proposalTypes.forEach(t=>{
-    const catCount = (t.config.categories||[]).length;
     html += `
       <div class="type-card" data-type="${t.id}">
         <div class="type-card-top">
           <input type="text" class="type-name-input" data-type="${t.id}" value="${escapeAttr(t.name)}" placeholder="Template name">
         </div>
-        <div class="type-card-meta">${catCount} categor${catCount===1?'y':'ies'} · tap the name above to rename</div>
         <div class="type-card-actions">
           <button class="btn-primary type-open-btn" data-type="${t.id}" style="flex:1;padding:10px;font-size:13.5px;">Open</button>
         </div>
