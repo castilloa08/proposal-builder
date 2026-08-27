@@ -2136,7 +2136,8 @@ function renderProposalDetail(main){
       <button class="btn btn-ghost" id="previewStoredPdfBtn" style="flex:1;" ${hasPdf?'':'disabled'}>Preview Proposal</button>
       <button class="btn btn-ghost" id="viewStoredPdfBtn" style="flex:1;" ${hasPdf?'':'disabled'}>Download PDF</button>
     </div>
-    <button class="btn btn-ghost" id="genPartsFromSavedBtn" style="width:100%;margin-top:10px;">Generate Parts List</button>
+    <button class="btn btn-ghost" id="genPartsFromSavedBtn" style="width:100%;margin-top:10px;">Preview Parts List</button>
+    <button class="btn btn-ghost" id="downloadPartsFromSavedBtn" style="width:100%;margin-top:8px;">Download Parts List</button>
     ${!hasPdf ? `<div class="hint" style="margin-top:8px;">${isDraft ? "No PDF yet — this is still a draft." : "No PDF stored for this record yet."}</div>` : ``}
     <button class="btn-danger-ghost" id="deleteProposalBtn" style="width:100%;margin-top:18px;padding:12px;">${state.myProposalDetailPendingDelete ? "Tap again to confirm delete" : `Delete ${deleteLabel}`}</button>
   `;
@@ -2146,7 +2147,8 @@ function renderProposalDetail(main){
   if(viewBtn) viewBtn.onclick = ()=> openStoredProposalPdf(d);
   const previewBtn = document.getElementById("previewStoredPdfBtn");
   if(previewBtn) previewBtn.onclick = ()=> previewStoredProposalPdf(d);
-  document.getElementById("genPartsFromSavedBtn").onclick = ()=> generatePartsListForSavedProposal(d);
+  document.getElementById("genPartsFromSavedBtn").onclick = ()=> generatePartsListForSavedProposal(d, "preview");
+  document.getElementById("downloadPartsFromSavedBtn").onclick = ()=> generatePartsListForSavedProposal(d, "download");
   const acceptBtn = document.getElementById("acceptProposalBtn");
   if(acceptBtn) acceptBtn.onclick = ()=> markProposalAccepted(d);
   document.getElementById("editSavedProposalBtn").onclick = ()=> editSavedProposal(d);
@@ -2294,7 +2296,7 @@ function openStoredProposalPdf(detail){
 // regenerates the internal parts list from it — this is the "bid was
 // accepted, I need the parts list now" path. Nothing about the customer PDF
 // is touched; only proposal_data is ever reused here.
-async function generatePartsListForSavedProposal(detail){
+async function generatePartsListForSavedProposal(detail, mode){
   const isServer = detail.source === "server";
   const proposalData = isServer ? detail.data.proposal_data : detail.data.proposalData;
   if(!proposalData){ showToast("No proposal data available for this record"); return; }
@@ -2322,7 +2324,7 @@ async function generatePartsListForSavedProposal(detail){
   state.notes = Array.isArray(proposalData.notes) ? proposalData.notes : [];
   state.quoteNumber = proposalData.quoteNumber || null;
 
-  await generatePartsListPdf();
+  await generatePartsListPdf(mode);
 }
 
 function wireLanding(main){
@@ -3763,6 +3765,17 @@ function closePdfPreview(){
   render();
 }
 
+function downloadBlobAsFile(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+}
+
 function downloadPreviewedPdf(){
   const p = state.pdfPreview;
   if(!p) return;
@@ -3850,7 +3863,8 @@ function renderPdfPreviewModal(){
   if(saveBtn) saveBtn.onclick = saveProposalFromPreview;
 }
 
-async function generatePartsListPdf(){
+async function generatePartsListPdf(mode){
+  mode = mode || "preview";
   if(!state.customer.name){ showToast("Enter a customer name first"); return; }
   state.generatingParts = true;
   render();
@@ -3972,7 +3986,13 @@ async function generatePartsListPdf(){
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
     const safeName = (state.customer.name || "customer").replace(/[^a-z0-9]+/gi,"_");
-    openPdfPreview(blob, `PartsList_${safeName}.pdf`, "partsList");
+    const filename = `PartsList_${safeName}.pdf`;
+    if(mode === "download"){
+      downloadBlobAsFile(blob, filename);
+      showToast("Downloaded");
+    } else {
+      openPdfPreview(blob, filename, "partsList");
+    }
   }catch(e){
     console.error(e);
     showToast("Could not generate parts list: " + (e.message||e));
