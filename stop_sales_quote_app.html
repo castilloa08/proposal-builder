@@ -314,27 +314,40 @@ if(!IS_CLAUDE_STORAGE){
             const data = await res.json();
             if(data.value !== null && data.value !== undefined){
               try{ localStorage.setItem("cache:"+key, data.value); }catch(e){}
-              return { key, value: data.value, shared };
+              return { key, value: data.value, shared, updatedAt: data.updatedAt || null };
             }
           }
         }catch(e){ /* offline — fall through to local cache */ }
       }
       try{
         const local = localStorage.getItem("cache:"+key);
-        if(local !== null) return { key, value: local, shared };
+        if(local !== null) return { key, value: local, shared, updatedAt: null };
       }catch(e){}
       return null;
     },
-    async set(key, value, shared){
+    // expectedUpdatedAt (optional): pass the timestamp this device last loaded
+    // for this key, and the server will refuse the write (returning a
+    // conflict instead of silently overwriting) if someone else has saved
+    // since then — e.g. a change made on mobile while this device's tab sat
+    // open with an older copy in memory.
+    async set(key, value, shared, expectedUpdatedAt){
       try{ localStorage.setItem("cache:"+key, value); }catch(e){}
       const { apiBase, apiKey } = getSyncSettings();
       if(apiBase){
         try{
-          await fetch(`${apiBase}/api/kv/${encodeURIComponent(key)}`, {
+          const res = await fetch(`${apiBase}/api/kv/${encodeURIComponent(key)}`, {
             method: "PUT",
             headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
-            body: JSON.stringify({ value })
+            body: JSON.stringify({ value, expectedUpdatedAt })
           });
+          if(res.status === 409){
+            const conflict = await res.json();
+            return { key, value, shared, conflict: true, serverValue: conflict.value, updatedAt: conflict.updatedAt };
+          }
+          if(res.ok){
+            const data = await res.json();
+            return { key, value, shared, updatedAt: data.updatedAt || null };
+          }
         }catch(e){ /* saved locally; will sync next time there's a connection */ }
       }
       return { key, value, shared };
@@ -794,6 +807,7 @@ const DEFAULT_CONFIG = {
 };
 
 const TYPES_KEY = "quote-app-types-v1";
+let typesServerUpdatedAt = null; // tracks the last-known server timestamp for TYPES_KEY, used to detect if another device saved changes we haven't seen yet
 const LEGACY_CONFIG_KEY = "quote-app-config-v2";
 const COUNTER_KEY = "quote-app-counter-v1";
 
@@ -973,6 +987,7 @@ async function loadAllTypes(){
     const res = await window.storage.get(TYPES_KEY, true);
     if(res && res.value){
       state.proposalTypes = JSON.parse(res.value);
+      typesServerUpdatedAt = res.updatedAt || null;
     } else {
       // migrate from the old single-config storage if it exists
       let migrated = null;
@@ -1004,7 +1019,22 @@ async function loadAllTypes(){
 
 async function saveAllTypes(){
   try{
-    const r = await window.storage.set(TYPES_KEY, JSON.stringify(state.proposalTypes), true);
+    const r = await window.storage.set(TYPES_KEY, JSON.stringify(state.proposalTypes), true, typesServerUpdatedAt);
+    if(r && r.conflict){
+      // Someone else (another device) saved changes to this same data since
+      // we last loaded it. Refusing to overwrite and pulling their version
+      // instead — this is exactly what prevents a stale tab from silently
+      // wiping out edits made elsewhere.
+      try{
+        state.proposalTypes = JSON.parse(r.serverValue);
+        state.proposalTypes.forEach(t=> normalizeConfig(t.config));
+      }catch(e){}
+      typesServerUpdatedAt = r.updatedAt || typesServerUpdatedAt;
+      render();
+      showToast("Another device saved changes just now, so the latest version was loaded instead — please redo your last change.");
+      return;
+    }
+    if(r) typesServerUpdatedAt = r.updatedAt || typesServerUpdatedAt;
     if(!r) showToast("Could not save — try again");
   }catch(e){
     showToast("Save failed: " + (e.message||e));

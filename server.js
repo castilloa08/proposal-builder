@@ -123,17 +123,41 @@ app.get("/api/kv/:key", checkAuth, async (req, res) => {
 app.put("/api/kv/:key", checkAuth, async (req, res) => {
   try {
     const { key } = req.params;
-    const { value } = req.body;
+    const { value, expectedUpdatedAt } = req.body;
     if (typeof value !== "string") {
       return res.status(400).json({ error: "'value' must be a string" });
     }
-    await pool.query(
+
+    // Optimistic concurrency check: if the caller tells us what timestamp it
+    // last loaded, and the row has been updated by someone else since then,
+    // refuse the write instead of silently overwriting their changes. This is
+    // what stops one device's stale in-memory copy (e.g. a browser tab left
+    // open for a while) from clobbering edits made on another device in the
+    // meantime.
+    if (expectedUpdatedAt) {
+      const current = await pool.query(
+        "SELECT value, updated_at FROM kv_store WHERE key = $1",
+        [key]
+      );
+      const row = current.rows[0];
+      const currentUpdatedAt = row ? row.updated_at.toISOString() : null;
+      if (currentUpdatedAt && new Date(currentUpdatedAt).getTime() !== new Date(expectedUpdatedAt).getTime()) {
+        return res.status(409).json({
+          error: "conflict",
+          value: row.value,
+          updatedAt: currentUpdatedAt
+        });
+      }
+    }
+
+    const result = await pool.query(
       `INSERT INTO kv_store (key, value, updated_at)
        VALUES ($1, $2, now())
-       ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()`,
+       ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()
+       RETURNING updated_at`,
       [key, value]
     );
-    res.json({ ok: true });
+    res.json({ ok: true, updatedAt: result.rows[0].updated_at });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Server error" });
