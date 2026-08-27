@@ -516,6 +516,7 @@ function currentProposalDataSnapshot(){
     selections: state.selections,
     titleChoice: state.titleChoice,
     customTitle: state.customTitle,
+    openingHeader: state.openingHeader,
     closingText: state.closingText,
     installTotal: state.installTotal,
     installDirty: state.installDirty,
@@ -699,6 +700,7 @@ function arraysEqual(a,b){
 
 const DEFAULT_CONFIG = {
   titleOptions: [],
+  openingHeaderOptions: [],
   profitOptions: [],
   laborRates: [],
   noteOptions: [],
@@ -840,6 +842,7 @@ let state = {
   rep: "", repTitle: "",
   titleChoice: "",
   customTitle: "",
+  openingHeader: "",
   closingText: "",
   installTotal: "", installDirty: false,
   monitorTotal: "", monitorDirty: false,
@@ -935,6 +938,7 @@ function normalizeConfig(cfg){
   if(!cfg.profitOptions) cfg.profitOptions = JSON.parse(JSON.stringify(DEFAULT_CONFIG.profitOptions));
   if(!cfg.laborRates) cfg.laborRates = JSON.parse(JSON.stringify(DEFAULT_CONFIG.laborRates));
   if(!cfg.noteOptions) cfg.noteOptions = JSON.parse(JSON.stringify(DEFAULT_CONFIG.noteOptions));
+  if(!cfg.openingHeaderOptions) cfg.openingHeaderOptions = [];
 
   // One-time cleanup: strip the old stock example values if a saved type still has them untouched.
   // Guarded so this only ever runs once per config — otherwise retyping the exact same wording
@@ -1028,6 +1032,7 @@ function selectProposalType(id){
   state.config = t.config;
   resetQuoteState();
   state.titleChoice = state.config.titleOptions[0] || "__custom__";
+  state.openingHeader = "";
   state.closingText = state.config.documentSettings.closingText;
   const now = new Date();
   const mm = String(now.getMonth()+1).padStart(2,"0");
@@ -2182,6 +2187,7 @@ function editSavedProposal(detail){
   state.repTitle = proposalData.repTitle || "";
   state.titleChoice = proposalData.titleChoice || (state.config.titleOptions[0] || "__custom__");
   state.customTitle = proposalData.customTitle || "";
+  state.openingHeader = proposalData.openingHeader || "";
   state.closingText = proposalData.closingText || state.config.documentSettings.closingText;
   state.installTotal = proposalData.installTotal || "";
   state.installDirty = !!proposalData.installDirty;
@@ -2383,6 +2389,17 @@ function renderDocSettingsSection(ds){
           </div>
         `).join("")}
         <button class="add-opt-btn" data-action="add-title">+ Add title option</button>
+      </div>
+      <div class="field">
+        <label>Opening header options</label>
+        <div class="hint" style="margin-top:-4px;margin-bottom:8px;">Reps can pick one of these from a dropdown on the New Proposal screen to load into the opening header field, then edit it further if needed.</div>
+        ${(state.config.openingHeaderOptions||[]).map((t,ti)=>`
+          <div class="admin-opt-top" style="margin-bottom:7px;align-items:flex-start;">
+            <textarea class="opening-header-opt" data-idx="${ti}" rows="2" style="flex:1;">${escapeAttr(t)}</textarea>
+            <button class="rm" data-action="del-opening-header" data-idx="${ti}">✕</button>
+          </div>
+        `).join("")}
+        <button class="add-opt-btn" data-action="add-opening-header">+ Add opening header option</button>
       </div>
       <div class="row2">
         <div class="field"><label>Installation total label</label><input type="text" id="ds_instLabel" value="${escapeAttr(ds.installationLabel)}"></div>
@@ -2687,6 +2704,23 @@ function wireAdmin(main){
   const addTitleBtn = main.querySelector('[data-action="add-title"]');
   if(addTitleBtn) addTitleBtn.onclick = ()=>{
     state.config.titleOptions.push("New Title");
+    saveConfig(); render();
+  };
+  main.querySelectorAll(".opening-header-opt").forEach(inp=>{
+    inp.onchange = ()=>{
+      state.config.openingHeaderOptions[parseInt(inp.dataset.idx,10)] = inp.value;
+      saveConfig();
+    };
+  });
+  main.querySelectorAll('[data-action="del-opening-header"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      state.config.openingHeaderOptions.splice(parseInt(btn.dataset.idx,10),1);
+      saveConfig(); render();
+    };
+  });
+  const addOpeningHeaderBtn = main.querySelector('[data-action="add-opening-header"]');
+  if(addOpeningHeaderBtn) addOpeningHeaderBtn.onclick = ()=>{
+    state.config.openingHeaderOptions.push("Thank you for the opportunity to provide this proposal for...");
     saveConfig(); render();
   };
   const dsInstLabelInp = main.querySelector("#ds_instLabel");
@@ -3121,6 +3155,7 @@ function renderQuote(main){
   if(!state.monitorDirty) state.monitorTotal = defaults.monthly.toFixed(2);
 
   const titleOptions = state.config.titleOptions||[];
+  const openingHeaderOptions = state.config.openingHeaderOptions||[];
 
   let html = `
     <h2 class="section-title">Customer Information</h2>
@@ -3139,6 +3174,18 @@ function renderQuote(main){
       </div>
       <div class="field"><label>Proposal date</label>
         <input type="date" id="c_date" value="${escapeAttr(state.proposalDate)}"></div>
+    </div>
+
+    <h2 class="section-title">Opening Header</h2>
+    <div class="card">
+      <select id="p_opening_select">
+        <option value="">Select a pre-written opening header…</option>
+        ${openingHeaderOptions.map((t,ti)=>`<option value="${ti}">${escapeAttr(t.length>70?t.slice(0,70)+"…":t)}</option>`).join("")}
+      </select>
+      <div class="field" style="margin-top:10px;">
+        <textarea id="p_opening_text" rows="3" placeholder="Type the opening header text shown at the top of the proposal">${escapeAttr(state.openingHeader)}</textarea>
+      </div>
+      <button type="button" class="add-opt-btn" id="saveOpeningHeaderPresetBtn" style="margin-top:6px;">+ Save this as a preset</button>
     </div>
 
     <h2 class="section-title">Proposal Title</h2>
@@ -3402,6 +3449,26 @@ function wireQuote(main){
   main.querySelector("#c_phone").oninput = e=> state.customer.phone = e.target.value;
   main.querySelector("#c_email").oninput = e=> state.customer.email = e.target.value;
   main.querySelector("#c_date").oninput = e=> state.proposalDate = e.target.value;
+  main.querySelector("#p_opening_select").onchange = e=>{
+    const idx = e.target.value;
+    if(idx !== ""){
+      const opts = state.config.openingHeaderOptions||[];
+      state.openingHeader = opts[parseInt(idx,10)] || "";
+      renderQuote(main);
+    }
+  };
+  main.querySelector("#p_opening_text").oninput = e=> state.openingHeader = e.target.value;
+  const saveOpeningPresetBtn = main.querySelector("#saveOpeningHeaderPresetBtn");
+  if(saveOpeningPresetBtn) saveOpeningPresetBtn.onclick = ()=>{
+    const text = (state.openingHeader||"").trim();
+    if(!text){ showToast("Type an opening header first"); return; }
+    const opts = state.config.openingHeaderOptions || (state.config.openingHeaderOptions = []);
+    if(opts.some(o=>o.trim()===text)){ showToast("Already saved in the list"); return; }
+    opts.push(text);
+    saveConfig();
+    renderQuote(main);
+    showToast("Added to opening header list");
+  };
   main.querySelector("#p_title_select").onchange = e=>{ state.titleChoice = e.target.value; renderQuote(main); };
   const customTitleInp = main.querySelector("#p_title_custom");
   if(customTitleInp) customTitleInp.oninput = e=> state.customTitle = e.target.value;
@@ -4082,6 +4149,16 @@ async function generatePdf(){
       y -= 14;
     }
     y -= 14;
+
+    // Opening header — optional intro paragraph, shown above the title
+    if(state.openingHeader && state.openingHeader.trim()){
+      wrapText(state.openingHeader.trim(), font, 10.5, rightX - marginX).forEach(line=>{
+        ensureSpace(14);
+        page.drawText(line, { x: marginX, y, size: 10.5, font, color: black });
+        y -= 14;
+      });
+      y -= 10;
+    }
 
     // Title (underlined)
     const title = titleText.toUpperCase();
