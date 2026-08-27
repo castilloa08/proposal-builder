@@ -2380,17 +2380,6 @@ function renderDocSettingsSection(ds){
   return `
     <div class="card">
       <div class="field">
-        <label>Proposal title options</label>
-        <div class="hint" style="margin-top:-4px;margin-bottom:8px;">Reps pick one of these from a dropdown, or choose "Custom title…" to type their own.</div>
-        ${(state.config.titleOptions||[]).map((t,ti)=>`
-          <div class="admin-opt-top" style="margin-bottom:7px;">
-            <input type="text" class="title-opt" data-idx="${ti}" value="${escapeAttr(t)}">
-            <button class="rm" data-action="del-title" data-idx="${ti}">✕</button>
-          </div>
-        `).join("")}
-        <button class="add-opt-btn" data-action="add-title">+ Add title option</button>
-      </div>
-      <div class="field">
         <label>Opening header options</label>
         <div class="hint" style="margin-top:-4px;margin-bottom:8px;">Reps can pick one of these from a dropdown on the New Proposal screen to load into the opening header field, then edit it further if needed.</div>
         ${(state.config.openingHeaderOptions||[]).map((t,ti)=>`
@@ -2400,6 +2389,17 @@ function renderDocSettingsSection(ds){
           </div>
         `).join("")}
         <button class="add-opt-btn" data-action="add-opening-header">+ Add opening header option</button>
+      </div>
+      <div class="field">
+        <label>Proposal title options</label>
+        <div class="hint" style="margin-top:-4px;margin-bottom:8px;">Reps pick one of these from a dropdown, or choose "Custom title…" to type their own.</div>
+        ${(state.config.titleOptions||[]).map((t,ti)=>`
+          <div class="admin-opt-top" style="margin-bottom:7px;">
+            <input type="text" class="title-opt" data-idx="${ti}" value="${escapeAttr(t)}">
+            <button class="rm" data-action="del-title" data-idx="${ti}">✕</button>
+          </div>
+        `).join("")}
+        <button class="add-opt-btn" data-action="add-title">+ Add title option</button>
       </div>
       <div class="row2">
         <div class="field"><label>Installation total label</label><input type="text" id="ds_instLabel" value="${escapeAttr(ds.installationLabel)}"></div>
@@ -3144,6 +3144,19 @@ function escapeAttr(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
 }
 
+// Formats digits-only as (###) ###-#### progressively as the rep types,
+// stripping anything that isn't a digit (spaces, dashes, letters, etc.) and
+// dropping a leading "1" if a full 11-digit number gets pasted in.
+function formatPhoneNumber(raw){
+  let digits = (raw||"").replace(/\D/g,"");
+  if(digits.length === 11 && digits[0] === "1") digits = digits.slice(1);
+  digits = digits.slice(0,10);
+  if(digits.length === 0) return "";
+  if(digits.length < 4) return `(${digits}`;
+  if(digits.length < 7) return `(${digits.slice(0,3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+}
+
 /* ---------- QUOTE VIEW ---------- */
 
 function renderQuote(main){
@@ -3446,7 +3459,11 @@ function wireQuote(main){
   main.querySelector("#c_name").oninput = e=> state.customer.name = e.target.value;
   main.querySelector("#c_business").oninput = e=> state.customer.business = e.target.value;
   main.querySelector("#c_address").oninput = e=> state.customer.address = e.target.value;
-  main.querySelector("#c_phone").oninput = e=> state.customer.phone = e.target.value;
+  main.querySelector("#c_phone").oninput = e=>{
+    const formatted = formatPhoneNumber(e.target.value);
+    e.target.value = formatted;
+    state.customer.phone = formatted;
+  };
   main.querySelector("#c_email").oninput = e=> state.customer.email = e.target.value;
   main.querySelector("#c_date").oninput = e=> state.proposalDate = e.target.value;
   main.querySelector("#p_opening_select").onchange = e=>{
