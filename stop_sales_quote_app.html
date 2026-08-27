@@ -547,7 +547,8 @@ function currentProposalDataSnapshot(){
     proposalDate: state.proposalDate,
     quoteNumber: state.quoteNumber,
     rep: state.rep,
-    repTitle: state.repTitle
+    repTitle: state.repTitle,
+    repFont: state.repFont
   };
 }
 
@@ -859,7 +860,7 @@ let state = {
   loaded: false,
   selections: {},     // catId -> { optId: {checked, qty, bullets} }
   customer: { name:"", business:"", address:"", phone:"", ext:"", email:"" },
-  rep: "", repTitle: "", repChoice: "",
+  rep: "", repTitle: "", repChoice: "", repFont: "standard",
   titleChoice: "",
   customTitle: "",
   openingHeader: "",
@@ -1075,8 +1076,10 @@ function selectProposalType(id){
     state.repChoice = "0";
     state.rep = state.config.salesReps[0].name;
     state.repTitle = state.config.salesReps[0].title;
+    state.repFont = state.config.salesReps[0].font || "standard";
   } else {
     state.repChoice = "__custom__";
+    state.repFont = "standard";
   }
   const now = new Date();
   const mm = String(now.getMonth()+1).padStart(2,"0");
@@ -2371,6 +2374,7 @@ function editSavedProposal(detail){
   state.selections = proposalData.selections || {};
   state.rep = proposalData.rep || "";
   state.repTitle = proposalData.repTitle || "";
+  state.repFont = proposalData.repFont || "standard";
   { const reps = state.config.salesReps || [];
     const matchIdx = reps.findIndex(r=> r.name === state.rep && r.title === state.repTitle);
     state.repChoice = matchIdx >= 0 ? String(matchIdx) : "__custom__"; }
@@ -2510,6 +2514,7 @@ async function generatePartsListForSavedProposal(detail, mode){
   state.selections = proposalData.selections || {};
   state.rep = proposalData.rep || "";
   state.repTitle = proposalData.repTitle || "";
+  state.repFont = proposalData.repFont || "standard";
   state.installTotal = proposalData.installTotal || "";
   state.monitorTotal = proposalData.monitorTotal || "";
   state.profitPercent = proposalData.profitPercent || "0";
@@ -2592,11 +2597,15 @@ function renderDocSettingsSection(ds){
       </div>
       <div class="field">
         <label>Sales reps</label>
-        <div class="hint" style="margin-top:-4px;margin-bottom:8px;">Reps pick their name from a dropdown on the New Proposal screen instead of typing it in — this fills in both name and title together.</div>
+        <div class="hint" style="margin-top:-4px;margin-bottom:8px;">Reps pick their name from a dropdown on the New Proposal screen instead of typing it in — this fills in both name and title together. The font choice controls what font the entire generated proposal PDF uses for that rep.</div>
         ${(state.config.salesReps||[]).map((r,ri)=>`
-          <div class="admin-opt-top" style="margin-bottom:7px;">
-            <input type="text" class="rep-name-opt" data-idx="${ri}" value="${escapeAttr(r.name)}" placeholder="Rep name" style="flex:1;">
-            <input type="text" class="rep-title-opt" data-idx="${ri}" value="${escapeAttr(r.title)}" placeholder="Title" style="flex:1;">
+          <div class="admin-opt-top" style="margin-bottom:7px;flex-wrap:wrap;">
+            <input type="text" class="rep-name-opt" data-idx="${ri}" value="${escapeAttr(r.name)}" placeholder="Rep name" style="flex:1;min-width:120px;">
+            <input type="text" class="rep-title-opt" data-idx="${ri}" value="${escapeAttr(r.title)}" placeholder="Title" style="flex:1;min-width:120px;">
+            <select class="rep-font-opt" data-idx="${ri}" style="flex:1;min-width:120px;">
+              <option value="standard" ${(!r.font||r.font==='standard')?'selected':''}>Standard font</option>
+              <option value="times" ${r.font==='times'?'selected':''}>Times New Roman</option>
+            </select>
             <button class="rm" data-action="del-rep" data-idx="${ri}">✕</button>
           </div>
         `).join("")}
@@ -2936,6 +2945,12 @@ function wireAdmin(main){
       saveConfig();
     };
   });
+  main.querySelectorAll(".rep-font-opt").forEach(sel=>{
+    sel.onchange = ()=>{
+      state.config.salesReps[parseInt(sel.dataset.idx,10)].font = sel.value;
+      saveConfig();
+    };
+  });
   main.querySelectorAll('[data-action="del-rep"]').forEach(btn=>{
     btn.onclick = ()=>{
       state.config.salesReps.splice(parseInt(btn.dataset.idx,10),1);
@@ -2944,7 +2959,7 @@ function wireAdmin(main){
   });
   const addRepBtn = main.querySelector('[data-action="add-rep"]');
   if(addRepBtn) addRepBtn.onclick = ()=>{
-    state.config.salesReps.push({ name: "New Rep", title: "" });
+    state.config.salesReps.push({ name: "New Rep", title: "", font: "standard" });
     saveConfig(); render();
   };
   const dsInstLabelInp = main.querySelector("#ds_instLabel");
@@ -3792,6 +3807,9 @@ function wireQuote(main){
       const r = state.config.salesReps[parseInt(e.target.value,10)];
       state.rep = r.name;
       state.repTitle = r.title;
+      state.repFont = r.font || "standard";
+    } else {
+      state.repFont = "standard";
     }
     renderQuote(main);
   };
@@ -4408,8 +4426,8 @@ async function generatePdf(){
     const letterheadPage = pdfDoc.getPages()[0];
     const { width, height } = letterheadPage.getSize();
 
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const font = await pdfDoc.embedFont(state.repFont === "times" ? StandardFonts.TimesRoman : StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(state.repFont === "times" ? StandardFonts.TimesRomanBold : StandardFonts.HelveticaBold);
     const navy = rgb(0.08,0.16,0.27);
     const black = rgb(0.1,0.1,0.1);
     const gray = rgb(0.42,0.44,0.47);
