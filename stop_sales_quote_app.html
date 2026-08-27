@@ -637,12 +637,13 @@ async function syncPendingProposals(){
   return { ok, fail, total: pending.length };
 }
 
-async function fetchServerProposals(status, q){
+async function fetchServerProposals(status, q, rep){
   const { apiBase, apiKey } = getSyncSettings();
   if(!apiBase) return [];
   const params = new URLSearchParams();
   if(status) params.set("status", status);
   if(q) params.set("q", q);
+  if(rep) params.set("rep", rep);
   const qs = params.toString() ? `?${params.toString()}` : "";
   const res = await fetch(`${apiBase}/api/proposals${qs}`, { headers: { "x-api-key": apiKey } });
   if(!res.ok) throw new Error("Could not load proposals");
@@ -830,7 +831,8 @@ let state = {
   view: "landing",        // "landing" | "app" | "myProposals"
   tab: "quote",
   pdfPreview: null,       // { blob, url, filename, kind: "proposal"|"partsList" }
-  myProposals: { items: {server:[],pending:[]}, loading: false, error: null, mode: "saved", query: "" },
+  myProposals: { items: {server:[],pending:[]}, loading: false, error: null, mode: "saved", query: "", repFilter: null },
+  repPicker: { mode: "saved", loading: false, error: null, reps: [] },
   myProposalsPendingDeleteId: null,
   myProposalDetailPendingDelete: false,
   myProposalDetail: null, // { id/clientId, source: "server"|"local", record/data, loading }
@@ -1553,8 +1555,30 @@ function render(){
     return;
   }
 
+  if(state.view === "repPicker"){
+    const pickerLabel = state.repPicker.mode === "draft" ? "Drafts" : "Proposals";
+    app.innerHTML = `
+      <div class="topbar">
+        <div class="brand">
+          <button class="back-link" id="backFromRepPickerBtn">&larr; Back</button>
+          <div class="s2" style="margin-top:4px;">${pickerLabel}</div>
+        </div>
+      </div>
+      <main id="main"></main>
+    `;
+    document.getElementById("backFromRepPickerBtn").onclick = ()=>{ state.view = "landing"; render(); };
+    renderRepPicker(document.getElementById("main"));
+    return;
+  }
+
   if(state.view === "myProposals" || state.view === "drafts" || state.view === "accepted"){
-    const screenTitle = state.view === "drafts" ? "Drafts" : (state.view === "accepted" ? "Accepted Proposals" : "My Proposals");
+    let repLabel = "";
+    if(state.view !== "accepted" && state.myProposals.repFilter){
+      repLabel = state.myProposals.repFilter === "__unassigned__" ? "Unassigned" : state.myProposals.repFilter;
+    }
+    const baseTitle = state.view === "drafts" ? "Drafts" : (state.view === "accepted" ? "Accepted Proposals" : "Proposals");
+    const screenTitle = repLabel ? `${repLabel} - ${baseTitle}` : baseTitle;
+    const backTarget = (state.view !== "accepted") ? "repPicker" : "landing";
     app.innerHTML = `
       <div class="topbar">
         <div class="brand">
@@ -1564,7 +1588,11 @@ function render(){
       </div>
       <main id="main"></main>
     `;
-    document.getElementById("backFromMyProposalsBtn").onclick = ()=>{ state.view = "landing"; state.myProposalDetail = null; render(); };
+    document.getElementById("backFromMyProposalsBtn").onclick = ()=>{
+      state.myProposalDetail = null;
+      if(backTarget === "repPicker"){ state.view = "repPicker"; } else { state.view = "landing"; }
+      render();
+    };
     renderMyProposals(document.getElementById("main"));
     return;
   }
@@ -1620,7 +1648,7 @@ function render(){
 function renderLanding(main){
   let html = `
     ${deferredInstallPrompt ? `<button class="btn-primary" id="installAppBtn" style="width:100%;margin-bottom:14px;font-weight:700;">⬇️ Install App</button>` : ``}
-    <button class="btn btn-ghost" id="openMyProposalsBtn" style="width:100%;margin-bottom:10px;font-weight:700;">My Proposals</button>
+    <button class="btn btn-ghost" id="openMyProposalsBtn" style="width:100%;margin-bottom:10px;font-weight:700;">Proposals</button>
     <button class="btn btn-ghost" id="openDraftsBtn" style="width:100%;margin-bottom:10px;font-weight:700;">Drafts</button>
     <button class="btn btn-ghost" id="openAcceptedBtn" style="width:100%;margin-bottom:16px;font-weight:700;">Accepted Proposals</button>
     <h2 class="section-title">Proposal Templates</h2>
@@ -1906,10 +1934,112 @@ function proposalCustomerSummary(customer){
 
 function openMyProposals(mode){
   mode = (mode === "draft" || mode === "accepted") ? mode : "saved";
-  state.view = mode === "draft" ? "drafts" : (mode === "accepted" ? "accepted" : "myProposals");
+  if(mode === "accepted"){
+    // Accepted Proposals stays a flat list — no rep grouping requested for this one.
+    state.view = "accepted";
+    state.myProposalDetail = null;
+    state.myProposalsPendingDeleteId = null;
+    state.myProposals.mode = mode;
+    state.myProposals.repFilter = null;
+    render();
+    loadMyProposalsList(mode);
+    return;
+  }
+  openRepPicker(mode);
+}
+
+function openRepPicker(mode){
+  state.view = "repPicker";
+  state.repPicker.mode = mode;
+  state.myProposalDetail = null;
+  render();
+  loadRepPicker(mode);
+}
+
+async function loadRepPicker(mode){
+  state.repPicker.mode = mode;
+  state.repPicker.loading = true;
+  state.repPicker.error = null;
+  render();
+
+  let serverItems = [];
+  let serverOk = false;
+  try{
+    serverItems = await fetchServerProposals(mode);
+    serverOk = true;
+  }catch(e){ /* offline, or sync not configured — fall back to local only */ }
+  let localAll = [];
+  try{ localAll = await idbGetAllProposals(); }catch(e){}
+  const pendingLocal = localAll.filter(r=> (r.status||"saved")===mode && !r.synced);
+
+  const counts = {}; // rep name -> count; "" bucket = unassigned
+  serverItems.forEach(p=>{
+    const name = (p.rep_name||"").trim();
+    counts[name] = (counts[name]||0) + 1;
+  });
+  pendingLocal.forEach(r=>{
+    const name = (r.repName||"").trim();
+    counts[name] = (counts[name]||0) + 1;
+  });
+
+  const repNames = Object.keys(counts).filter(n=>n!=="").sort((a,b)=>a.localeCompare(b));
+  const reps = repNames.map(name=>({ key: name, name, count: counts[name] }));
+  if(counts[""]) reps.push({ key: "__unassigned__", name: "Unassigned", count: counts[""] });
+
+  state.repPicker.loading = false;
+  state.repPicker.error = serverOk ? null : "Showing what's saved on this device only — couldn't reach the server.";
+  state.repPicker.reps = reps;
+  state.repPicker.totalCount = serverItems.length + pendingLocal.length;
+  render();
+}
+
+function renderRepPicker(main){
+  const mode = state.repPicker.mode;
+  const label = mode === "draft" ? "Drafts" : "Proposals";
+  const data = state.repPicker;
+  let html = "";
+  if(data.loading){
+    html += `<div class="loading-row"><div class="spinner"></div> Loading...</div>`;
+  } else {
+    if(data.error){
+      html += `<div class="hint" style="color:var(--red);margin-bottom:10px;">${escapeAttr(data.error)}</div>`;
+    }
+    html += `
+      <div class="type-card">
+        <div class="type-card-top"><div style="font-weight:800;">All ${label}${data.totalCount!==undefined?` (${data.totalCount})`:''}</div></div>
+        <div class="type-card-actions">
+          <button class="btn-primary rep-open-btn" data-rep="" style="flex:1;padding:10px;font-size:13.5px;">Open</button>
+        </div>
+      </div>
+    `;
+    if(!data.reps.length){
+      html += `<div class="empty" style="margin-top:10px;">No sales reps have saved ${label.toLowerCase()} yet.</div>`;
+    }
+    data.reps.forEach(r=>{
+      html += `
+        <div class="type-card">
+          <div class="type-card-top"><div style="font-weight:800;">${escapeAttr(r.name)}</div></div>
+          <div class="type-card-meta">${r.count} ${label.toLowerCase()}</div>
+          <div class="type-card-actions">
+            <button class="btn-primary rep-open-btn" data-rep="${escapeAttr(r.key)}" style="flex:1;padding:10px;font-size:13.5px;">Open</button>
+          </div>
+        </div>
+      `;
+    });
+  }
+  main.innerHTML = html;
+  main.querySelectorAll(".rep-open-btn").forEach(btn=>{
+    btn.onclick = ()=> openProposalsForRep(mode, btn.dataset.rep);
+  });
+}
+
+function openProposalsForRep(mode, repKey){
+  state.view = mode === "draft" ? "drafts" : "myProposals";
+  state.myProposals.mode = mode;
+  state.myProposals.repFilter = repKey || null; // "" -> All (null), "__unassigned__", or a real rep name
+  state.myProposals.query = "";
   state.myProposalDetail = null;
   state.myProposalsPendingDeleteId = null;
-  state.myProposals.mode = mode;
   render();
   loadMyProposalsList(mode);
 }
@@ -1921,10 +2051,11 @@ async function loadMyProposalsList(mode){
   state.myProposals.error = null;
   render();
   const query = (state.myProposals.query||"").trim();
+  const repFilter = state.myProposals.repFilter || null;
   let serverItems = [];
   let serverOk = false;
   try{
-    serverItems = await fetchServerProposals(mode, query);
+    serverItems = await fetchServerProposals(mode, query, repFilter);
     serverOk = true;
   }catch(e){ /* offline, or sync not configured — fall back to local only */ }
   let localAll = [];
@@ -1933,6 +2064,12 @@ async function loadMyProposalsList(mode){
   const pendingLocal = localAll.filter(r=>{
     if((r.status||"saved") !== mode) return false;
     if(r.synced) return false;
+    const repName = (r.repName||"").trim();
+    if(repFilter === "__unassigned__"){
+      if(repName !== "") return false;
+    } else if(repFilter){
+      if(repName !== repFilter) return false;
+    }
     if(!qLower) return true;
     const hay = `${r.customer.name||""} ${r.customer.business||""} ${r.quoteNumber||""}`.toLowerCase();
     return hay.includes(qLower);
@@ -2111,7 +2248,7 @@ function renderProposalDetail(main){
   if(d.loading){ main.innerHTML = `<div class="loading-row"><div class="spinner"></div> Loading...</div>`; return; }
   if(d.error){
     main.innerHTML = `
-      <button class="back-link" id="detailBackBtn">&larr; My Proposals</button>
+      <button class="back-link" id="detailBackBtn">&larr; Proposals</button>
       <div class="hint" style="color:var(--red);margin-top:12px;">Could not load: ${escapeAttr(d.error)}</div>
     `;
     document.getElementById("detailBackBtn").onclick = ()=>{ state.myProposalDetail = null; render(); };
@@ -2130,7 +2267,11 @@ function renderProposalDetail(main){
   const dateStr = isServer ? fmtDateShort(rec.updated_at) : fmtDateShort(rec.savedAt);
   const hasPdf = isServer ? !!rec.has_pdf : !!rec.pdfBase64;
   const backLabels = { draft: "Drafts", accepted: "Accepted Proposals" };
-  const backLabel = backLabels[status] || "My Proposals";
+  let backLabel = backLabels[status] || "Proposals";
+  if(status !== "accepted" && state.myProposals.repFilter){
+    const repLabel = state.myProposals.repFilter === "__unassigned__" ? "Unassigned" : state.myProposals.repFilter;
+    backLabel = `${repLabel} - ${backLabel}`;
+  }
   const editLabel = isDraft ? "Continue Editing" : "Edit This Proposal";
   const deleteLabel = isDraft ? "Draft" : (isAccepted ? "Accepted Proposal" : "Proposal");
 

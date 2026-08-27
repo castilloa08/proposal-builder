@@ -215,7 +215,11 @@ app.get("/api/proposals", checkAuth, async (req, res) => {
     const clauses = [];
     const params = [];
     if (status) { params.push(status); clauses.push(`status = $${params.length}`); }
-    if (rep) { params.push(rep); clauses.push(`rep_name = $${params.length}`); }
+    if (rep === "__unassigned__") {
+      clauses.push(`(rep_name IS NULL OR rep_name = '')`);
+    } else if (rep) {
+      params.push(rep); clauses.push(`rep_name = $${params.length}`);
+    }
     if (q) {
       params.push(`%${q}%`);
       const idx = params.length;
