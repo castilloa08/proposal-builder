@@ -729,7 +729,15 @@ const DEFAULT_CONFIG = {
     showMonitoringLine: true,
     companyName: "S.T.O.P ALARM INC.",
     contactPhone: "(559) 781-3310",
-    closingText: "Thank you for this opportunity to be of service to you. Please feel free to contact me at any time at {phone}. We always have a live person that will answer the phone 24/7 and they can always reach me."
+    closingText: "Thank you for this opportunity to be of service to you. Please feel free to contact me at any time at {phone}. We always have a live person that will answer the phone 24/7 and they can always reach me.",
+    openingHeaderFontSize: 10.5,
+    openingHeaderBold: false,
+    titleFontSize: 12.5,
+    titleBold: true,
+    repFontSize: 10.5,
+    repBold: false,
+    closingFontSize: 10,
+    closingBold: false
   },
   categories: [
     {
@@ -922,6 +930,14 @@ function makeBlankConfig(){
 function normalizeConfig(cfg){
   if(!cfg.documentSettings) cfg.documentSettings = JSON.parse(JSON.stringify(DEFAULT_CONFIG.documentSettings));
   if(cfg.documentSettings.showMonitoringLine === undefined) cfg.documentSettings.showMonitoringLine = true;
+  if(cfg.documentSettings.openingHeaderFontSize === undefined) cfg.documentSettings.openingHeaderFontSize = 10.5;
+  if(cfg.documentSettings.openingHeaderBold === undefined) cfg.documentSettings.openingHeaderBold = false;
+  if(cfg.documentSettings.titleFontSize === undefined) cfg.documentSettings.titleFontSize = 12.5;
+  if(cfg.documentSettings.titleBold === undefined) cfg.documentSettings.titleBold = true;
+  if(cfg.documentSettings.repFontSize === undefined) cfg.documentSettings.repFontSize = 10.5;
+  if(cfg.documentSettings.repBold === undefined) cfg.documentSettings.repBold = false;
+  if(cfg.documentSettings.closingFontSize === undefined) cfg.documentSettings.closingFontSize = 10;
+  if(cfg.documentSettings.closingBold === undefined) cfg.documentSettings.closingBold = false;
   if(!cfg.titleOptions || !cfg.titleOptions.length){
     cfg.titleOptions = cfg.documentSettings.proposalTitle
       ? [cfg.documentSettings.proposalTitle]
@@ -2583,6 +2599,14 @@ function renderDocSettingsSection(ds){
           </div>
         `).join("")}
         <button class="add-opt-btn" data-action="add-opening-header">+ Add opening header option</button>
+        <div class="row2" style="margin-top:10px;">
+          <div class="field"><label>Print size</label><input type="number" id="ds_openingHeaderSize" value="${ds.openingHeaderFontSize}" min="6" max="24" step="0.5"></div>
+          <div class="field" style="align-self:flex-end;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:11px;">
+              <input type="checkbox" id="ds_openingHeaderBold" ${ds.openingHeaderBold?'checked':''}> Bold
+            </label>
+          </div>
+        </div>
       </div>
       <div class="field">
         <label>Proposal title options</label>
@@ -2594,6 +2618,14 @@ function renderDocSettingsSection(ds){
           </div>
         `).join("")}
         <button class="add-opt-btn" data-action="add-title">+ Add title option</button>
+        <div class="row2" style="margin-top:10px;">
+          <div class="field"><label>Print size</label><input type="number" id="ds_titleSize" value="${ds.titleFontSize}" min="6" max="30" step="0.5"></div>
+          <div class="field" style="align-self:flex-end;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:11px;">
+              <input type="checkbox" id="ds_titleBold" ${ds.titleBold?'checked':''}> Bold
+            </label>
+          </div>
+        </div>
       </div>
       <div class="field">
         <label>Sales reps</label>
@@ -2610,6 +2642,15 @@ function renderDocSettingsSection(ds){
           </div>
         `).join("")}
         <button class="add-opt-btn" data-action="add-rep">+ Add sales rep</button>
+        <div class="hint" style="margin-top:10px;margin-bottom:-2px;">Print size and bold below apply to the rep's name and title on the proposal's signature line.</div>
+        <div class="row2" style="margin-top:10px;">
+          <div class="field"><label>Print size</label><input type="number" id="ds_repSize" value="${ds.repFontSize}" min="6" max="24" step="0.5"></div>
+          <div class="field" style="align-self:flex-end;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:11px;">
+              <input type="checkbox" id="ds_repBold" ${ds.repBold?'checked':''}> Bold
+            </label>
+          </div>
+        </div>
       </div>
       <div class="row2">
         <div class="field"><label>Installation total label</label><input type="text" id="ds_instLabel" value="${escapeAttr(ds.installationLabel)}"></div>
@@ -2626,6 +2667,14 @@ function renderDocSettingsSection(ds){
       <div class="field">
         <label>Closing paragraph (use {phone} for the contact phone)</label>
         <textarea id="ds_closing" rows="3">${escapeAttr(ds.closingText)}</textarea>
+        <div class="row2" style="margin-top:10px;">
+          <div class="field"><label>Print size</label><input type="number" id="ds_closingSize" value="${ds.closingFontSize}" min="6" max="24" step="0.5"></div>
+          <div class="field" style="align-self:flex-end;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:11px;">
+              <input type="checkbox" id="ds_closingBold" ${ds.closingBold?'checked':''}> Bold
+            </label>
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -2974,6 +3023,22 @@ function wireAdmin(main){
   if(dsPhoneInp) dsPhoneInp.onchange = e=>{ ds.contactPhone = e.target.value; saveConfig(); };
   const dsClosingInp = main.querySelector("#ds_closing");
   if(dsClosingInp) dsClosingInp.onchange = e=>{ ds.closingText = e.target.value; saveConfig(); };
+  const dsOpeningHeaderSizeInp = main.querySelector("#ds_openingHeaderSize");
+  if(dsOpeningHeaderSizeInp) dsOpeningHeaderSizeInp.onchange = e=>{ ds.openingHeaderFontSize = parseFloat(e.target.value)||10.5; saveConfig(); };
+  const dsOpeningHeaderBoldInp = main.querySelector("#ds_openingHeaderBold");
+  if(dsOpeningHeaderBoldInp) dsOpeningHeaderBoldInp.onchange = e=>{ ds.openingHeaderBold = e.target.checked; saveConfig(); };
+  const dsTitleSizeInp = main.querySelector("#ds_titleSize");
+  if(dsTitleSizeInp) dsTitleSizeInp.onchange = e=>{ ds.titleFontSize = parseFloat(e.target.value)||12.5; saveConfig(); };
+  const dsTitleBoldInp = main.querySelector("#ds_titleBold");
+  if(dsTitleBoldInp) dsTitleBoldInp.onchange = e=>{ ds.titleBold = e.target.checked; saveConfig(); };
+  const dsRepSizeInp = main.querySelector("#ds_repSize");
+  if(dsRepSizeInp) dsRepSizeInp.onchange = e=>{ ds.repFontSize = parseFloat(e.target.value)||10.5; saveConfig(); };
+  const dsRepBoldInp = main.querySelector("#ds_repBold");
+  if(dsRepBoldInp) dsRepBoldInp.onchange = e=>{ ds.repBold = e.target.checked; saveConfig(); };
+  const dsClosingSizeInp = main.querySelector("#ds_closingSize");
+  if(dsClosingSizeInp) dsClosingSizeInp.onchange = e=>{ ds.closingFontSize = parseFloat(e.target.value)||10; saveConfig(); };
+  const dsClosingBoldInp = main.querySelector("#ds_closingBold");
+  if(dsClosingBoldInp) dsClosingBoldInp.onchange = e=>{ ds.closingBold = e.target.checked; saveConfig(); };
 
   main.querySelectorAll(".profit-opt").forEach(inp=>{
     inp.onchange = ()=>{
@@ -4441,6 +4506,7 @@ async function generatePdf(){
 
     const font = await pdfDoc.embedFont(state.repFont === "times" ? StandardFonts.TimesRoman : StandardFonts.Helvetica);
     const fontBold = await pdfDoc.embedFont(state.repFont === "times" ? StandardFonts.TimesRomanBold : StandardFonts.HelveticaBold);
+    const ds = state.config.documentSettings;
     const navy = rgb(0.08,0.16,0.27);
     const black = rgb(0.1,0.1,0.1);
     const gray = rgb(0.42,0.44,0.47);
@@ -4511,20 +4577,24 @@ async function generatePdf(){
 
     // Opening header — optional intro paragraph, shown above the title
     if(state.openingHeader && state.openingHeader.trim()){
-      wrapText(state.openingHeader.trim(), font, 10.5, rightX - marginX).forEach(line=>{
-        ensureSpace(14);
-        page.drawText(line, { x: marginX, y, size: 10.5, font, color: black });
-        y -= 14;
+      const ohSize = ds.openingHeaderFontSize || 10.5;
+      const ohFont = ds.openingHeaderBold ? fontBold : font;
+      wrapText(state.openingHeader.trim(), ohFont, ohSize, rightX - marginX).forEach(line=>{
+        ensureSpace(ohSize+3.5);
+        page.drawText(line, { x: marginX, y, size: ohSize, font: ohFont, color: black });
+        y -= (ohSize+3.5);
       });
       y -= 10;
     }
 
     // Title (underlined)
     const title = titleText.toUpperCase();
-    page.drawText(title, { x: marginX, y, size: 12.5, font: fontBold, color: black });
-    const titleW = fontBold.widthOfTextAtSize(title, 12.5);
+    const titleSize = ds.titleFontSize || 12.5;
+    const titleFontChoice = ds.titleBold === false ? font : fontBold;
+    page.drawText(title, { x: marginX, y, size: titleSize, font: titleFontChoice, color: black });
+    const titleW = titleFontChoice.widthOfTextAtSize(title, titleSize);
     page.drawLine({ start:{x:marginX,y:y-3}, end:{x:marginX+titleW,y:y-3}, thickness:0.9, color: black });
-    y -= 26;
+    y -= (titleSize+13.5);
 
     // Lettered scope list
     const items = computeScopeItems();
@@ -4588,7 +4658,6 @@ async function generatePdf(){
     ensureSpace(50);
 
     // Pricing lines with dotted leaders
-    const ds = state.config.documentSettings;
     const priceX = marginX + 20;
     const priceColRight = rightX;
     function drawPriceLine(label, amount){
@@ -4616,24 +4685,28 @@ async function generatePdf(){
     // Closing paragraph
     const closing = (state.closingText||"").replace(/\{phone\}/gi, ds.contactPhone||"");
     if(closing.trim()){
+      const clSize = ds.closingFontSize || 10;
+      const clFont = ds.closingBold ? fontBold : font;
       ensureSpace(40);
-      wrapText(closing, font, 10, rightX - marginX).forEach(line=>{
-        ensureSpace(13);
-        page.drawText(line, { x: marginX, y, size: 10, font, color: black });
-        y -= 13;
+      wrapText(closing, clFont, clSize, rightX - marginX).forEach(line=>{
+        ensureSpace(clSize+3);
+        page.drawText(line, { x: marginX, y, size: clSize, font: clFont, color: black });
+        y -= (clSize+3);
       });
     }
 
     y -= 16;
+    const repSize = ds.repFontSize || 10.5;
+    const repFontChoice = ds.repBold ? fontBold : font;
     let sigHeight = 32; // "Sincerely," line + gap before name
-    if(state.rep) sigHeight += 14;
-    if(state.repTitle) sigHeight += 14;
+    if(state.rep) sigHeight += (repSize+3.5);
+    if(state.repTitle) sigHeight += (repSize+3.5);
     if(ds.companyName) sigHeight += 14;
     ensureSpace(sigHeight, 45); // signature block is short & left-aligned, so it can sit lower than general body text
     page.drawText("Sincerely,", { x: marginX, y, size: 10.5, font, color: black });
     y -= 32;
-    if(state.rep){ page.drawText(state.rep, { x: marginX, y, size: 10.5, font, color: black }); y -= 14; }
-    if(state.repTitle){ page.drawText(state.repTitle, { x: marginX, y, size: 10.5, font, color: black }); y -= 14; }
+    if(state.rep){ page.drawText(state.rep, { x: marginX, y, size: repSize, font: repFontChoice, color: black }); y -= (repSize+3.5); }
+    if(state.repTitle){ page.drawText(state.repTitle, { x: marginX, y, size: repSize, font: repFontChoice, color: black }); y -= (repSize+3.5); }
     if(ds.companyName){ page.drawText(ds.companyName, { x: marginX, y, size: 10.5, font, color: black }); y -= 14; }
 
     const pdfBytes = await pdfDoc.save();
