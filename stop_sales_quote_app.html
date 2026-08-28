@@ -550,7 +550,8 @@ function currentProposalDataSnapshot(){
     quoteNumber: state.quoteNumber,
     rep: state.rep,
     repTitle: state.repTitle,
-    repFont: state.repFont
+    repFont: state.repFont,
+    repEmail: state.repEmail
   };
 }
 
@@ -871,7 +872,7 @@ let state = {
   loaded: false,
   selections: {},     // catId -> { optId: {checked, qty, bullets} }
   customer: { name:"", business:"", address:"", city:"", state:"CA", zip:"", phone:"", ext:"", email:"" },
-  rep: "", repTitle: "", repChoice: "", repFont: "standard",
+  rep: "", repTitle: "", repChoice: "", repFont: "standard", repEmail: "",
   titleChoice: "",
   customTitle: "",
   openingHeader: "",
@@ -1101,9 +1102,11 @@ function selectProposalType(id){
     state.rep = state.config.salesReps[0].name;
     state.repTitle = state.config.salesReps[0].title;
     state.repFont = state.config.salesReps[0].font || "standard";
+    state.repEmail = state.config.salesReps[0].email || "";
   } else {
     state.repChoice = "__custom__";
     state.repFont = "standard";
+    state.repEmail = "";
   }
   const now = new Date();
   const mm = String(now.getMonth()+1).padStart(2,"0");
@@ -2399,6 +2402,7 @@ function editSavedProposal(detail){
   state.rep = proposalData.rep || "";
   state.repTitle = proposalData.repTitle || "";
   state.repFont = proposalData.repFont || "standard";
+  state.repEmail = proposalData.repEmail || "";
   { const reps = state.config.salesReps || [];
     const matchIdx = reps.findIndex(r=> r.name === state.rep && r.title === state.repTitle);
     state.repChoice = matchIdx >= 0 ? String(matchIdx) : "__custom__"; }
@@ -2541,6 +2545,7 @@ async function generatePartsListForSavedProposal(detail, mode){
   state.rep = proposalData.rep || "";
   state.repTitle = proposalData.repTitle || "";
   state.repFont = proposalData.repFont || "standard";
+  state.repEmail = proposalData.repEmail || "";
   state.installTotal = proposalData.installTotal || "";
   state.monitorTotal = proposalData.monitorTotal || "";
   state.profitPercent = proposalData.profitPercent || "0";
@@ -2639,11 +2644,12 @@ function renderDocSettingsSection(ds){
       </div>
       <div class="field">
         <label>Sales reps</label>
-        <div class="hint" style="margin-top:-4px;margin-bottom:8px;">Reps pick their name from a dropdown on the New Proposal screen instead of typing it in — this fills in both name and title together. The font choice controls what font the entire generated proposal PDF uses for that rep.</div>
+        <div class="hint" style="margin-top:-4px;margin-bottom:8px;">Reps pick their name from a dropdown on the New Proposal screen instead of typing it in — this fills in both name and title together. The font choice controls what font the entire generated proposal PDF uses for that rep. The email prints in red under the signature company name.</div>
         ${(state.config.salesReps||[]).map((r,ri)=>`
           <div class="admin-opt-top" style="margin-bottom:7px;flex-wrap:wrap;">
             <input type="text" class="rep-name-opt" data-idx="${ri}" value="${escapeAttr(r.name)}" placeholder="Rep name" style="flex:1;min-width:120px;">
             <input type="text" class="rep-title-opt" data-idx="${ri}" value="${escapeAttr(r.title)}" placeholder="Title" style="flex:1;min-width:120px;">
+            <input type="email" class="rep-email-opt" data-idx="${ri}" value="${escapeAttr(r.email||'')}" placeholder="Email" style="flex:1;min-width:150px;">
             <select class="rep-font-opt" data-idx="${ri}" style="flex:1;min-width:120px;">
               <option value="standard" ${(!r.font||r.font==='standard')?'selected':''}>Standard font</option>
               <option value="times" ${r.font==='times'?'selected':''}>Times New Roman</option>
@@ -3032,6 +3038,12 @@ function wireAdmin(main){
       saveConfig();
     };
   });
+  main.querySelectorAll(".rep-email-opt").forEach(inp=>{
+    inp.onchange = ()=>{
+      state.config.salesReps[parseInt(inp.dataset.idx,10)].email = inp.value;
+      saveConfig();
+    };
+  });
   main.querySelectorAll(".rep-font-opt").forEach(sel=>{
     sel.onchange = ()=>{
       state.config.salesReps[parseInt(sel.dataset.idx,10)].font = sel.value;
@@ -3046,7 +3058,7 @@ function wireAdmin(main){
   });
   const addRepBtn = main.querySelector('[data-action="add-rep"]');
   if(addRepBtn) addRepBtn.onclick = ()=>{
-    state.config.salesReps.push({ name: "New Rep", title: "", font: "standard" });
+    state.config.salesReps.push({ name: "New Rep", title: "", email: "", font: "standard" });
     saveConfig(); render();
   };
   const dsInstLabelInp = main.querySelector("#ds_instLabel");
@@ -3576,6 +3588,7 @@ function renderQuote(main){
       state.rep = selectedRep.name;
       state.repTitle = selectedRep.title;
       state.repFont = selectedRep.font || "standard";
+      state.repEmail = selectedRep.email || "";
     }
   }
 
@@ -4020,8 +4033,10 @@ function wireQuote(main){
       state.rep = r.name;
       state.repTitle = r.title;
       state.repFont = r.font || "standard";
+      state.repEmail = r.email || "";
     } else {
       state.repFont = "standard";
+      state.repEmail = "";
     }
     renderQuote(main);
   };
@@ -4861,12 +4876,14 @@ async function generatePdf(){
     if(state.rep) sigHeight += (repSize+3.5);
     if(state.repTitle) sigHeight += (repSize+3.5);
     if(ds.companyName) sigHeight += 14;
+    if(state.repEmail) sigHeight += 14;
     ensureSpace(sigHeight, 45); // signature block is short & left-aligned, so it can sit lower than general body text
     page.drawText("Sincerely,", { x: marginX, y, size: 10.5, font, color: black });
     y -= 32;
     if(state.rep){ page.drawText(state.rep, { x: marginX, y, size: repSize, font: repFontChoice, color: black }); y -= (repSize+3.5); }
     if(state.repTitle){ page.drawText(state.repTitle, { x: marginX, y, size: repSize, font: repFontChoice, color: black }); y -= (repSize+3.5); }
     if(ds.companyName){ page.drawText(ds.companyName, { x: marginX, y, size: 10.5, font, color: black }); y -= 14; }
+    if(state.repEmail){ page.drawText(state.repEmail, { x: marginX, y, size: 10.5, font, color: brandRed }); y -= 14; }
 
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
