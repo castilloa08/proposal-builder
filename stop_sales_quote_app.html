@@ -211,6 +211,7 @@
 <div id="deleteTypeConfirmModal"></div>
 <div id="exitConfirmModal"></div>
 <div id="importCategoryModal"></div>
+<div id="importDocSettingsModal"></div>
 
 <!-- pdf.js, bundled inline so PDF-page-to-image preview rendering works fully offline -->
 <script type="text/plain" id="pdfjsLibSource">
@@ -897,6 +898,7 @@ let state = {
   deleteTypeConfirmId: null,
   exitConfirmOpen: false,
   importCategoryModal: { open: false, step: "template", selectedTypeId: null },
+  importDocSettingsModal: { open: false },
   creatingType: false,
   newTypeName: "",
   newTypeSource: "blank"
@@ -1582,6 +1584,7 @@ function render(){
   renderDeleteTypeConfirmModal();
   renderExitConfirmModal();
   renderImportCategoryModal();
+  renderImportDocSettingsModal();
 
   if(state.view === "syncSetup"){
     app.innerHTML = `
@@ -2606,6 +2609,7 @@ function wireLanding(main){
 
 function renderDocSettingsSection(ds){
   return `
+    <button class="add-cat-btn" data-action="import-doc-settings" style="background:#fff;color:var(--navy);border:1.5px solid var(--navy);margin-bottom:12px;">+ Import document settings</button>
     <div class="card">
       <div class="field">
         <label>Opening header options</label>
@@ -3501,6 +3505,11 @@ function wireAdmin(main){
     state.importCategoryModal = { open: true, step: "template", selectedTypeId: null };
     render();
   };
+  const importDocSettingsBtn = main.querySelector('[data-action="import-doc-settings"]');
+  if(importDocSettingsBtn) importDocSettingsBtn.onclick = ()=>{
+    state.importDocSettingsModal = { open: true };
+    render();
+  };
 }
 
 /* ---------------- IMPORT CATEGORY (copy a category from another template) ---------------- */
@@ -3585,6 +3594,57 @@ function renderImportCategoryModal(){
       state.adminSectionIndex = getAdminSections().length - 1; // jump to the newly imported category
       render();
       showToast(`Imported "${copy.name}"`);
+    };
+  });
+}
+
+/* ---------------- IMPORT DOCUMENT SETTINGS (copy from another template) ---------------- */
+
+function renderImportDocSettingsModal(){
+  const host = document.getElementById("importDocSettingsModal");
+  if(!host) return;
+  const m = state.importDocSettingsModal;
+  if(!m || !m.open){ host.innerHTML = ""; host.style.display = "none"; return; }
+  host.style.display = "block";
+
+  host.innerHTML = `
+    <div class="confirm-modal-backdrop">
+      <div class="confirm-modal" style="max-width:440px;">
+        <div class="confirm-modal-title">Import document settings from…</div>
+        <div class="confirm-modal-body" style="margin-bottom:10px;">This replaces the opening headers, titles, closing paragraphs, sales reps, labels, and font settings on the template you're currently editing with whatever's saved on the template you pick below. This can't be undone.</div>
+        <div style="max-height:50vh;overflow-y:auto;">
+          ${state.proposalTypes.map(t=>`
+            <div class="type-card import-docsettings-row" data-type="${t.id}" style="cursor:pointer;">
+              <div class="type-card-top"><div style="font-weight:800;">${escapeAttr(t.name)}</div></div>
+            </div>
+          `).join("")}
+        </div>
+        <div class="confirm-modal-actions" style="margin-top:14px;">
+          <button type="button" class="btn btn-ghost" id="importDocSettingsCancelBtn" style="flex:1;">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const cancelBtn = host.querySelector("#importDocSettingsCancelBtn");
+  if(cancelBtn) cancelBtn.onclick = ()=>{ state.importDocSettingsModal = { open:false }; render(); };
+
+  host.querySelectorAll(".import-docsettings-row").forEach(row=>{
+    row.onclick = ()=>{
+      const srcType = state.proposalTypes.find(t=>t.id===row.dataset.type);
+      if(!srcType) return;
+      const src = srcType.config;
+      // Deep copy each piece so editing afterward never touches the source template.
+      state.config.titleOptions = JSON.parse(JSON.stringify(src.titleOptions||[]));
+      state.config.openingHeaderOptions = JSON.parse(JSON.stringify(src.openingHeaderOptions||[]));
+      state.config.closingOptions = JSON.parse(JSON.stringify(src.closingOptions||[]));
+      state.config.salesReps = JSON.parse(JSON.stringify(src.salesReps||[]));
+      state.config.documentSettings = JSON.parse(JSON.stringify(src.documentSettings||{}));
+      normalizeConfig(state.config);
+      saveConfig();
+      state.importDocSettingsModal = { open:false };
+      render();
+      showToast(`Imported document settings from "${srcType.name}"`);
     };
   });
 }
