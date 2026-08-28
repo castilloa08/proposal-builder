@@ -897,7 +897,7 @@ let state = {
   quickDockCollapsed: false,
   deleteTypeConfirmId: null,
   exitConfirmOpen: false,
-  importCategoryModal: { open: false, step: "template", selectedTypeId: null },
+  importCategoryModal: { open: false, step: "template", selectedTypeId: null, selectedCatId: null },
   importDocSettingsModal: { open: false, step: "template", selectedTypeId: null },
   creatingType: false,
   newTypeName: "",
@@ -3502,7 +3502,7 @@ function wireAdmin(main){
   };
   const importCatBtn = main.querySelector('[data-action="import-cat"]');
   if(importCatBtn) importCatBtn.onclick = ()=>{
-    state.importCategoryModal = { open: true, step: "template", selectedTypeId: null };
+    state.importCategoryModal = { open: true, step: "template", selectedTypeId: null, selectedCatId: null };
     render();
   };
   const importDocSettingsBtn = main.querySelector('[data-action="import-doc-settings"]');
@@ -3538,12 +3538,12 @@ function renderImportCategoryModal(){
         <button type="button" class="btn btn-ghost" id="importCatCancelBtn" style="flex:1;">Cancel</button>
       </div>
     `;
-  } else {
+  } else if(m.step === "category"){
     const srcType = state.proposalTypes.find(t=>t.id===m.selectedTypeId);
     const srcCats = srcType ? (srcType.config.categories||[]) : [];
     bodyHtml = `
       <div class="confirm-modal-title">Import from "${escapeAttr(srcType?srcType.name:'')}"</div>
-      <div class="confirm-modal-body" style="margin-bottom:10px;">Pick which category to copy into the template you're currently editing.</div>
+      <div class="confirm-modal-body" style="margin-bottom:10px;">Pick which category to pull options from.</div>
       <div style="max-height:50vh;overflow-y:auto;">
         ${srcCats.length ? srcCats.map(c=>`
           <div class="type-card import-category-row" data-cat="${c.id}" style="cursor:pointer;">
@@ -3557,6 +3557,31 @@ function renderImportCategoryModal(){
         <button type="button" class="btn btn-ghost" id="importCatCancelBtn" style="flex:1;">Cancel</button>
       </div>
     `;
+  } else {
+    const srcType = state.proposalTypes.find(t=>t.id===m.selectedTypeId);
+    const srcCat = srcType && (srcType.config.categories||[]).find(c=>c.id===m.selectedCatId);
+    const opts = srcCat ? (srcCat.options||[]) : [];
+    bodyHtml = `
+      <div class="confirm-modal-title">Import from "${escapeAttr(srcCat?srcCat.name:'')}"</div>
+      <div class="confirm-modal-body" style="margin-bottom:6px;">Pick which options to bring in. This creates a new category on the template you're currently editing, containing just what you select here.</div>
+      <div style="max-height:45vh;overflow-y:auto;">
+        ${opts.length ? opts.map(o=>`
+          <label style="display:flex;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px solid #eee;cursor:pointer;">
+            <input type="checkbox" class="import-opt-checkbox" data-opt="${o.id}" checked>
+            <span style="flex:1;">${escapeAttr(o.label)}</span>
+            <span style="color:var(--muted);font-size:12.5px;">${fmtMoney(o.price||0)}</span>
+          </label>
+        `).join("") : `<div class="empty">This category has no options yet.</div>`}
+      </div>
+      <div style="display:flex;gap:14px;margin-top:8px;font-size:12.5px;">
+        <a href="#" id="importOptSelectAll" style="color:var(--blue);">Select all</a>
+        <a href="#" id="importOptSelectNone" style="color:var(--blue);">Select none</a>
+      </div>
+      <div class="confirm-modal-actions" style="margin-top:14px;">
+        <button type="button" class="btn btn-ghost" id="importOptBackBtn" style="flex:1;">&larr; Back</button>
+        <button type="button" class="btn btn-primary" id="importOptConfirmBtn" style="flex:1;">Import</button>
+      </div>
+    `;
   }
 
   host.innerHTML = `
@@ -3568,9 +3593,11 @@ function renderImportCategoryModal(){
   `;
 
   const cancelBtn = host.querySelector("#importCatCancelBtn");
-  if(cancelBtn) cancelBtn.onclick = ()=>{ state.importCategoryModal = { open:false, step:"template", selectedTypeId:null }; render(); };
+  if(cancelBtn) cancelBtn.onclick = ()=>{ state.importCategoryModal = { open:false, step:"template", selectedTypeId:null, selectedCatId:null }; render(); };
   const backBtn = host.querySelector("#importCatBackBtn");
   if(backBtn) backBtn.onclick = ()=>{ state.importCategoryModal.step = "template"; state.importCategoryModal.selectedTypeId = null; render(); };
+  const optBackBtn = host.querySelector("#importOptBackBtn");
+  if(optBackBtn) optBackBtn.onclick = ()=>{ state.importCategoryModal.step = "category"; state.importCategoryModal.selectedCatId = null; render(); };
 
   host.querySelectorAll(".import-template-row").forEach(row=>{
     row.onclick = ()=>{
@@ -3581,21 +3608,46 @@ function renderImportCategoryModal(){
   });
   host.querySelectorAll(".import-category-row").forEach(row=>{
     row.onclick = ()=>{
-      const srcType = state.proposalTypes.find(t=>t.id===state.importCategoryModal.selectedTypeId);
-      const srcCat = srcType && (srcType.config.categories||[]).find(c=>c.id===row.dataset.cat);
-      if(!srcCat) return;
-      // Deep copy so editing the imported category never touches the source
-      // template, and give it a fresh id so it doesn't collide with anything.
-      const copy = JSON.parse(JSON.stringify(srcCat));
-      copy.id = uid();
-      state.config.categories.push(copy);
-      saveConfig();
-      state.importCategoryModal = { open:false, step:"template", selectedTypeId:null };
-      state.adminSectionIndex = getAdminSections().length - 1; // jump to the newly imported category
+      state.importCategoryModal.step = "options";
+      state.importCategoryModal.selectedCatId = row.dataset.cat;
       render();
-      showToast(`Imported "${copy.name}"`);
     };
   });
+
+  const selectAllLink = host.querySelector("#importOptSelectAll");
+  if(selectAllLink) selectAllLink.onclick = (e)=>{
+    e.preventDefault();
+    host.querySelectorAll(".import-opt-checkbox").forEach(cb=> cb.checked = true);
+  };
+  const selectNoneLink = host.querySelector("#importOptSelectNone");
+  if(selectNoneLink) selectNoneLink.onclick = (e)=>{
+    e.preventDefault();
+    host.querySelectorAll(".import-opt-checkbox").forEach(cb=> cb.checked = false);
+  };
+
+  const optConfirmBtn = host.querySelector("#importOptConfirmBtn");
+  if(optConfirmBtn) optConfirmBtn.onclick = ()=>{
+    const srcType = state.proposalTypes.find(t=>t.id===state.importCategoryModal.selectedTypeId);
+    const srcCat = srcType && (srcType.config.categories||[]).find(c=>c.id===state.importCategoryModal.selectedCatId);
+    if(!srcCat) return;
+    const checkedIds = Array.from(host.querySelectorAll(".import-opt-checkbox"))
+      .filter(cb=>cb.checked)
+      .map(cb=>cb.dataset.opt);
+    if(!checkedIds.length){ showToast("Pick at least one option to import"); return; }
+
+    // Deep copy the category (bullet library, pricing rules, etc. all come
+    // along), then trim its options down to just what was checked. A fresh
+    // id keeps it from colliding with anything already on this template.
+    const copy = JSON.parse(JSON.stringify(srcCat));
+    copy.id = uid();
+    copy.options = (copy.options||[]).filter(o=>checkedIds.includes(o.id));
+    state.config.categories.push(copy);
+    saveConfig();
+    state.importCategoryModal = { open:false, step:"template", selectedTypeId:null, selectedCatId:null };
+    state.adminSectionIndex = getAdminSections().length - 1; // jump to the newly imported category
+    render();
+    showToast(`Imported "${copy.name}" (${checkedIds.length} option${checkedIds.length===1?'':'s'})`);
+  };
 }
 
 /* ---------------- IMPORT DOCUMENT SETTINGS (copy from another template) ---------------- */
