@@ -4715,7 +4715,10 @@ async function generatePdf(){
     y -= 22;
 
     // Closing paragraph
-    const closing = (state.closingText||"").replace(/\{phone\}/gi, ds.contactPhone||"");
+    let closing = (state.closingText||"").replace(/\{phone\}/gi, ds.contactPhone||"");
+    if(state.openingHeaderName && state.openingHeaderName.trim() && closing.trim()){
+      closing = `${state.openingHeaderName.trim()}, ${closing}`;
+    }
     if(closing.trim()){
       const clSize = ds.closingFontSize || 10;
       const clFont = ds.closingBold ? fontBold : font;
