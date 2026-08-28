@@ -898,7 +898,7 @@ let state = {
   deleteTypeConfirmId: null,
   exitConfirmOpen: false,
   importCategoryModal: { open: false, step: "template", selectedTypeId: null },
-  importDocSettingsModal: { open: false },
+  importDocSettingsModal: { open: false, step: "template", selectedTypeId: null },
   creatingType: false,
   newTypeName: "",
   newTypeSource: "blank"
@@ -3507,7 +3507,7 @@ function wireAdmin(main){
   };
   const importDocSettingsBtn = main.querySelector('[data-action="import-doc-settings"]');
   if(importDocSettingsBtn) importDocSettingsBtn.onclick = ()=>{
-    state.importDocSettingsModal = { open: true };
+    state.importDocSettingsModal = { open: true, step: "template", selectedTypeId: null };
     render();
   };
 }
@@ -3607,46 +3607,84 @@ function renderImportDocSettingsModal(){
   if(!m || !m.open){ host.innerHTML = ""; host.style.display = "none"; return; }
   host.style.display = "block";
 
+  let bodyHtml;
+  if(m.step !== "topics"){
+    bodyHtml = `
+      <div class="confirm-modal-title">Import document settings from…</div>
+      <div class="confirm-modal-body" style="margin-bottom:10px;">Pick which template to pull from.</div>
+      <div style="max-height:50vh;overflow-y:auto;">
+        ${state.proposalTypes.map(t=>`
+          <div class="type-card import-docsettings-row" data-type="${t.id}" style="cursor:pointer;">
+            <div class="type-card-top"><div style="font-weight:800;">${escapeAttr(t.name)}</div></div>
+          </div>
+        `).join("")}
+      </div>
+      <div class="confirm-modal-actions" style="margin-top:14px;">
+        <button type="button" class="btn btn-ghost" id="importDocSettingsCancelBtn" style="flex:1;">Cancel</button>
+      </div>
+    `;
+  } else {
+    const srcType = state.proposalTypes.find(t=>t.id===m.selectedTypeId);
+    bodyHtml = `
+      <div class="confirm-modal-title">Import from "${escapeAttr(srcType?srcType.name:'')}"</div>
+      <div class="confirm-modal-body" style="margin-bottom:6px;">Pick which of these to bring in. Each one replaces the matching list on the template you're currently editing.</div>
+      <label style="display:flex;align-items:center;gap:8px;padding:10px 4px;border-bottom:1px solid #eee;cursor:pointer;">
+        <input type="checkbox" id="importTopicOpening" checked> Opening header options
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;padding:10px 4px;border-bottom:1px solid #eee;cursor:pointer;">
+        <input type="checkbox" id="importTopicReps" checked> Sales reps
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;padding:10px 4px;cursor:pointer;">
+        <input type="checkbox" id="importTopicClosing" checked> Closing paragraph options
+      </label>
+      <div class="confirm-modal-actions" style="margin-top:14px;">
+        <button type="button" class="btn btn-ghost" id="importDocSettingsBackBtn" style="flex:1;">&larr; Back</button>
+        <button type="button" class="btn btn-primary" id="importDocSettingsConfirmBtn" style="flex:1;">Import</button>
+      </div>
+    `;
+  }
+
   host.innerHTML = `
     <div class="confirm-modal-backdrop">
       <div class="confirm-modal" style="max-width:440px;">
-        <div class="confirm-modal-title">Import document settings from…</div>
-        <div class="confirm-modal-body" style="margin-bottom:10px;">This replaces the opening headers, titles, closing paragraphs, sales reps, labels, and font settings on the template you're currently editing with whatever's saved on the template you pick below. This can't be undone.</div>
-        <div style="max-height:50vh;overflow-y:auto;">
-          ${state.proposalTypes.map(t=>`
-            <div class="type-card import-docsettings-row" data-type="${t.id}" style="cursor:pointer;">
-              <div class="type-card-top"><div style="font-weight:800;">${escapeAttr(t.name)}</div></div>
-            </div>
-          `).join("")}
-        </div>
-        <div class="confirm-modal-actions" style="margin-top:14px;">
-          <button type="button" class="btn btn-ghost" id="importDocSettingsCancelBtn" style="flex:1;">Cancel</button>
-        </div>
+        ${bodyHtml}
       </div>
     </div>
   `;
 
   const cancelBtn = host.querySelector("#importDocSettingsCancelBtn");
   if(cancelBtn) cancelBtn.onclick = ()=>{ state.importDocSettingsModal = { open:false }; render(); };
+  const backBtn = host.querySelector("#importDocSettingsBackBtn");
+  if(backBtn) backBtn.onclick = ()=>{ state.importDocSettingsModal.step = "template"; render(); };
 
   host.querySelectorAll(".import-docsettings-row").forEach(row=>{
     row.onclick = ()=>{
-      const srcType = state.proposalTypes.find(t=>t.id===row.dataset.type);
-      if(!srcType) return;
-      const src = srcType.config;
-      // Deep copy each piece so editing afterward never touches the source template.
-      state.config.titleOptions = JSON.parse(JSON.stringify(src.titleOptions||[]));
-      state.config.openingHeaderOptions = JSON.parse(JSON.stringify(src.openingHeaderOptions||[]));
-      state.config.closingOptions = JSON.parse(JSON.stringify(src.closingOptions||[]));
-      state.config.salesReps = JSON.parse(JSON.stringify(src.salesReps||[]));
-      state.config.documentSettings = JSON.parse(JSON.stringify(src.documentSettings||{}));
-      normalizeConfig(state.config);
-      saveConfig();
-      state.importDocSettingsModal = { open:false };
+      state.importDocSettingsModal.step = "topics";
+      state.importDocSettingsModal.selectedTypeId = row.dataset.type;
       render();
-      showToast(`Imported document settings from "${srcType.name}"`);
     };
   });
+
+  const confirmBtn = host.querySelector("#importDocSettingsConfirmBtn");
+  if(confirmBtn) confirmBtn.onclick = ()=>{
+    const srcType = state.proposalTypes.find(t=>t.id===state.importDocSettingsModal.selectedTypeId);
+    if(!srcType) return;
+    const src = srcType.config;
+    const wantOpening = host.querySelector("#importTopicOpening").checked;
+    const wantReps = host.querySelector("#importTopicReps").checked;
+    const wantClosing = host.querySelector("#importTopicClosing").checked;
+    if(!wantOpening && !wantReps && !wantClosing){ showToast("Pick at least one to import"); return; }
+
+    // Deep copy only the checked pieces, so editing afterward never touches the source template.
+    if(wantOpening) state.config.openingHeaderOptions = JSON.parse(JSON.stringify(src.openingHeaderOptions||[]));
+    if(wantReps) state.config.salesReps = JSON.parse(JSON.stringify(src.salesReps||[]));
+    if(wantClosing) state.config.closingOptions = JSON.parse(JSON.stringify(src.closingOptions||[]));
+    normalizeConfig(state.config);
+    saveConfig();
+    state.importDocSettingsModal = { open:false };
+    render();
+    showToast(`Imported from "${srcType.name}"`);
+  };
 }
 
 function escapeAttr(s){
