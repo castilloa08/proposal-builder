@@ -4925,6 +4925,20 @@ async function generatePartsListPdf(mode){
 
 async function generatePdf(){
   if(!state.customer.name){ showToast("Enter a customer name first"); return; }
+  // Safety net: enforce the installation floor here too, not just on the
+  // field's blur event — this guarantees a proposal can never go out the
+  // door under the calculated baseline, regardless of how the field was
+  // left (e.g. tapping straight from the keyboard to "Generate" without a
+  // normal blur happening first on some devices).
+  {
+    const defaults = computeDefaultTotals();
+    const markup = 1 + (parseFloat(state.profitPercent)||0)/100;
+    const laborTotal = (parseFloat(state.laborRate)||0) * (parseFloat(state.laborTechs)||0) * (parseFloat(state.laborHours)||0);
+    const installBaseline = Math.ceil((defaults.installation * markup + laborTotal) / 5) * 5;
+    if((parseFloat(state.installTotal)||0) < installBaseline){
+      state.installTotal = installBaseline.toFixed(2);
+    }
+  }
   state.generating = true;
   render();
 
