@@ -3669,29 +3669,6 @@ function renderQuote(main){
   });
 
   html += `
-    <h2 class="section-title">Customer Notes</h2>
-    <div class="card">
-      ${state.notes.length === 0 ? `<div class="hint" style="margin-top:0;">No notes added yet.</div>` : ``}
-      ${state.notes.map((n,ni)=>{
-        const noteOpts = alphaSort((state.config.noteOptions||[]).map(o=>o.text).filter(x=>x.trim()!==""));
-        return `
-        <div class="bullet-row" style="margin-bottom:6px;">
-          <div class="bullet-suggest-wrap">
-            <input type="text" class="note-line-input" autocomplete="off" readonly data-idx="${ni}" value="${escapeAttr(n.text)}" placeholder="Type, or tap to pick a pre-written note">
-            <div class="bullet-suggest-list" data-lib='${escapeAttr(JSON.stringify(noteOpts))}'></div>
-          </div>
-          <button type="button" class="note-line-rm" data-idx="${ni}">✕</button>
-        </div>
-        <label style="display:flex;align-items:center;gap:6px;margin:-2px 0 10px 2px;font-size:11.5px;color:var(--muted);cursor:pointer;">
-          <input type="checkbox" class="note-line-red" data-idx="${ni}" ${n.red?'checked':''}>
-          Print this note in red so it stands out
-        </label>
-        `;
-      }).join("")}
-      <button type="button" class="add-opt-btn" id="addNoteBtn">+ Add note</button>
-      <div class="hint" style="margin-top:8px;">Each note prints centered on the page, stacked between the item list and the pricing totals.</div>
-    </div>
-
     <h2 class="section-title">Pricing</h2>
     <div class="card">
       <div class="field">
@@ -3723,6 +3700,29 @@ function renderQuote(main){
         <input type="number" step="0.01" id="monitor_total" value="${state.monitorTotal}"></div>
       ` : ``}
       <div class="hint">Auto-filled from your selections above — edit either field to quote a different price.</div>
+    </div>
+
+    <h2 class="section-title">Customer Notes</h2>
+    <div class="card">
+      ${state.notes.length === 0 ? `<div class="hint" style="margin-top:0;">No notes added yet.</div>` : ``}
+      ${state.notes.map((n,ni)=>{
+        const noteOpts = alphaSort((state.config.noteOptions||[]).map(o=>o.text).filter(x=>x.trim()!==""));
+        return `
+        <div class="bullet-row" style="margin-bottom:6px;">
+          <div class="bullet-suggest-wrap">
+            <input type="text" class="note-line-input" autocomplete="off" readonly data-idx="${ni}" value="${escapeAttr(n.text)}" placeholder="Type, or tap to pick a pre-written note">
+            <div class="bullet-suggest-list" data-lib='${escapeAttr(JSON.stringify(noteOpts))}'></div>
+          </div>
+          <button type="button" class="note-line-rm" data-idx="${ni}">✕</button>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;margin:-2px 0 10px 2px;font-size:11.5px;color:var(--muted);cursor:pointer;">
+          <input type="checkbox" class="note-line-red" data-idx="${ni}" ${n.red?'checked':''}>
+          Print this note in red so it stands out
+        </label>
+        `;
+      }).join("")}
+      <button type="button" class="add-opt-btn" id="addNoteBtn">+ Add note</button>
+      <div class="hint" style="margin-top:8px;">Each note prints centered on the page, listed under the installation and monitoring totals.</div>
     </div>
 
     <h2 class="section-title">Closing &amp; Signature</h2>
@@ -4748,24 +4748,6 @@ async function generatePdf(){
       y -= 14;
     }
 
-    // Customer-specific notes (each centered, optionally red)
-    const notesToPrint = currentCustomerNotes();
-    if(notesToPrint.length){
-      y -= 10;
-      notesToPrint.forEach(n=>{
-        ensureSpace(20);
-        const noteColor = n.red ? brandRed : black;
-        wrapText(n.text, fontBold, 10.5, (rightX - marginX) * 0.85).forEach(line=>{
-          ensureSpace(15);
-          const lineW = fontBold.widthOfTextAtSize(line, 10.5);
-          const centerX = marginX + ((rightX - marginX) - lineW) / 2;
-          page.drawText(line, { x: centerX, y, size: 10.5, font: fontBold, color: noteColor });
-          y -= 15;
-        });
-        y -= 4;
-      });
-    }
-
     y -= 16;
     ensureSpace(50);
 
@@ -4790,6 +4772,25 @@ async function generatePdf(){
     drawPriceLine(ds.installationLabel, parseFloat(state.installTotal)||0);
     if(ds.showMonitoringLine !== false){
       drawPriceLine(ds.monitoringLabel, parseFloat(state.monitorTotal)||0);
+    }
+
+    // Customer-specific notes (each centered, optionally red) — printed
+    // after the installation/monitoring totals rather than before them.
+    const notesToPrint = currentCustomerNotes();
+    if(notesToPrint.length){
+      y -= 10;
+      notesToPrint.forEach(n=>{
+        ensureSpace(20);
+        const noteColor = n.red ? brandRed : black;
+        wrapText(n.text, fontBold, 10.5, (rightX - marginX) * 0.85).forEach(line=>{
+          ensureSpace(15);
+          const lineW = fontBold.widthOfTextAtSize(line, 10.5);
+          const centerX = marginX + ((rightX - marginX) - lineW) / 2;
+          page.drawText(line, { x: centerX, y, size: 10.5, font: fontBold, color: noteColor });
+          y -= 15;
+        });
+        y -= 4;
+      });
     }
 
     y -= 22;
