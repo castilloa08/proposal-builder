@@ -533,6 +533,8 @@ function currentProposalDataSnapshot(){
     titleChoice: state.titleChoice,
     customTitle: state.customTitle,
     openingHeader: state.openingHeader,
+    openingHeaderName: state.openingHeaderName,
+    openingHeaderNameDirty: state.openingHeaderNameDirty,
     closingText: state.closingText,
     installTotal: state.installTotal,
     installDirty: state.installDirty,
@@ -872,6 +874,8 @@ let state = {
   titleChoice: "",
   customTitle: "",
   openingHeader: "",
+  openingHeaderName: "",
+  openingHeaderNameDirty: false,
   closingText: "",
   installTotal: "", installDirty: false,
   monitorTotal: "", monitorDirty: false,
@@ -1087,6 +1091,8 @@ function selectProposalType(id){
   resetQuoteState();
   state.titleChoice = state.config.titleOptions[0] || "__custom__";
   state.openingHeader = "";
+  state.openingHeaderName = "";
+  state.openingHeaderNameDirty = false;
   state.closingText = state.config.documentSettings.closingText;
   if(state.config.salesReps && state.config.salesReps.length){
     state.repChoice = "0";
@@ -2397,6 +2403,8 @@ function editSavedProposal(detail){
   state.titleChoice = proposalData.titleChoice || (state.config.titleOptions[0] || "__custom__");
   state.customTitle = proposalData.customTitle || "";
   state.openingHeader = proposalData.openingHeader || "";
+  state.openingHeaderName = proposalData.openingHeaderName || "";
+  state.openingHeaderNameDirty = !!proposalData.openingHeaderNameDirty;
   state.closingText = proposalData.closingText || state.config.documentSettings.closingText;
   state.installTotal = proposalData.installTotal || "";
   state.installDirty = !!proposalData.installDirty;
@@ -3515,6 +3523,10 @@ function renderQuote(main){
   const laborTotal = (parseFloat(state.laborRate)||0) * (parseFloat(state.laborTechs)||0) * (parseFloat(state.laborHours)||0);
   if(!state.installDirty) state.installTotal = (defaults.installation * markup + laborTotal).toFixed(2);
   if(!state.monitorDirty) state.monitorTotal = defaults.monthly.toFixed(2);
+  // Mirrors the customer name into the opening-header salutation for speed,
+  // but stops overriding it the moment the rep edits that field directly —
+  // same pattern as the install/monitor totals above.
+  if(!state.openingHeaderNameDirty) state.openingHeaderName = state.customer.name;
 
   // Keep the selected rep's name/title/font in sync with Admin Setup — if an
   // admin renames a rep or changes their font after this proposal already
@@ -3559,7 +3571,11 @@ function renderQuote(main){
 
     <h2 class="section-title">Opening Header</h2>
     <div class="card">
-      <select id="p_opening_select">
+      <div class="field">
+        <label>Addressed to (prints above the opening header, like a letter)</label>
+        <input type="text" id="p_opening_salutation" value="${escapeAttr(state.openingHeaderName)}" placeholder="Customer name">
+      </div>
+      <select id="p_opening_select" style="margin-top:10px;">
         <option value="">Select a pre-written opening header…</option>
         ${openingHeaderOptions.map((t,ti)=>`<option value="${ti}">${escapeAttr(t.length>70?t.slice(0,70)+"…":t)}</option>`).join("")}
       </select>
@@ -3854,6 +3870,10 @@ function wireQuote(main){
   };
   wireEmailSuggest(main.querySelector("#c_email"), main.querySelector("#emailSuggestList"));
   main.querySelector("#c_date").oninput = e=> state.proposalDate = e.target.value;
+  main.querySelector("#p_opening_salutation").oninput = e=>{
+    state.openingHeaderName = e.target.value;
+    state.openingHeaderNameDirty = true;
+  };
   main.querySelector("#p_opening_select").onchange = e=>{
     const idx = e.target.value;
     if(idx !== ""){
@@ -4579,6 +4599,11 @@ async function generatePdf(){
     if(state.openingHeader && state.openingHeader.trim()){
       const ohSize = ds.openingHeaderFontSize || 10.5;
       const ohFont = ds.openingHeaderBold ? fontBold : font;
+      if(state.openingHeaderName && state.openingHeaderName.trim()){
+        ensureSpace(ohSize+3.5);
+        page.drawText(`${state.openingHeaderName.trim()},`, { x: marginX, y, size: ohSize, font: ohFont, color: black });
+        y -= (ohSize+3.5) + 8; // blank line, like a letter, before the paragraph starts
+      }
       wrapText(state.openingHeader.trim(), ohFont, ohSize, rightX - marginX).forEach(line=>{
         ensureSpace(ohSize+3.5);
         page.drawText(line, { x: marginX, y, size: ohSize, font: ohFont, color: black });
