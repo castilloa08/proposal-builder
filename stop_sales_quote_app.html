@@ -3811,6 +3811,8 @@ function wireEmailSuggest(inp, listEl){
 
 /* ---------- QUOTE VIEW ---------- */
 
+let installClampTimer = null; // debounce handle for the installation-floor auto-correct while typing
+
 function renderQuote(main){
   const cats = state.config.categories||[];
   const defaults = computeDefaultTotals();
@@ -4312,14 +4314,27 @@ function wireQuote(main){
   const repTitleInp = main.querySelector("#rep_title");
   if(repTitleInp) repTitleInp.oninput = e=> state.repTitle = e.target.value;
 
-  main.querySelector("#install_total").oninput = e=>{ state.installTotal = e.target.value; state.installDirty = true; };
-  main.querySelector("#install_total").onchange = e=>{
-    let val = parseFloat(e.target.value);
-    if(isNaN(val) || val < installBaseline) val = installBaseline;
-    state.installTotal = val.toFixed(2);
-    state.installDirty = true;
-    renderQuote(main); // snaps the field visibly back to the floor if it was clamped
-  };
+  { const installInput = main.querySelector("#install_total");
+    const clampInstall = ()=>{
+      let val = parseFloat(installInput.value);
+      if(isNaN(val) || val < installBaseline) val = installBaseline;
+      state.installTotal = val.toFixed(2);
+      state.installDirty = true;
+      renderQuote(main); // snaps the field visibly back to the floor
+    };
+    installInput.oninput = e=>{
+      state.installTotal = e.target.value;
+      state.installDirty = true;
+      clearTimeout(installClampTimer);
+      installClampTimer = setTimeout(clampInstall, 900); // auto-correct after a brief pause in typing, even if the field never loses focus
+    };
+    // "blur" (not just "change") so this reliably fires the moment focus
+    // leaves the field, regardless of what's tapped next.
+    installInput.addEventListener("blur", ()=>{
+      clearTimeout(installClampTimer);
+      clampInstall();
+    });
+  }
   const monitorTotalInp = main.querySelector("#monitor_total");
   if(monitorTotalInp) monitorTotalInp.oninput = e=>{ state.monitorTotal = e.target.value; state.monitorDirty = true; };
   main.querySelector("#profit_select").onchange = e=>{ state.profitPercent = e.target.value; state.installDirty = false; renderQuote(main); };
