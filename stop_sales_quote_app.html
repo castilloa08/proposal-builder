@@ -3697,6 +3697,8 @@ function renderQuote(main){
 
     <h2 class="section-title">Closing &amp; Signature</h2>
     <div class="card">
+      <div class="field"><label>Customer name (added to the start of the closing paragraph)</label>
+        <input type="text" id="closing_salutation" value="${escapeAttr(state.openingHeaderName)}" placeholder="Customer name"></div>
       <div class="field"><label>Closing paragraph</label>
         <textarea id="closing_text" rows="3">${escapeAttr(state.closingText)}</textarea>
       </div>
@@ -3861,6 +3863,8 @@ function wireQuote(main){
       state.openingHeaderName = e.target.value;
       const salutationInp = main.querySelector("#p_opening_salutation");
       if(salutationInp) salutationInp.value = e.target.value;
+      const closingSalutationInp = main.querySelector("#closing_salutation");
+      if(closingSalutationInp) closingSalutationInp.value = e.target.value;
     }
   };
   main.querySelector("#c_business").oninput = e=> state.customer.business = e.target.value;
@@ -3880,6 +3884,8 @@ function wireQuote(main){
   main.querySelector("#p_opening_salutation").oninput = e=>{
     state.openingHeaderName = e.target.value;
     state.openingHeaderNameDirty = true;
+    const closingSalutationInp = main.querySelector("#closing_salutation");
+    if(closingSalutationInp) closingSalutationInp.value = e.target.value;
   };
   main.querySelector("#p_opening_select").onchange = e=>{
     const idx = e.target.value;
@@ -3904,6 +3910,12 @@ function wireQuote(main){
   main.querySelector("#p_title_select").onchange = e=>{ state.titleChoice = e.target.value; renderQuote(main); };
   const customTitleInp = main.querySelector("#p_title_custom");
   if(customTitleInp) customTitleInp.oninput = e=> state.customTitle = e.target.value;
+  main.querySelector("#closing_salutation").oninput = e=>{
+    state.openingHeaderName = e.target.value;
+    state.openingHeaderNameDirty = true;
+    const openingSalutationInp = main.querySelector("#p_opening_salutation");
+    if(openingSalutationInp) openingSalutationInp.value = e.target.value;
+  };
   main.querySelector("#closing_text").oninput = e=> state.closingText = e.target.value;
   const repSelect = main.querySelector("#rep_select");
   if(repSelect) repSelect.onchange = e=>{
