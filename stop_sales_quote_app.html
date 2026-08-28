@@ -3899,6 +3899,7 @@ function renderQuote(main){
         <div class="field" style="margin-top:10px;">
           <input type="text" id="p_title_custom" value="${escapeAttr(state.customTitle)}" placeholder="Type a custom proposal title">
         </div>
+        <button type="button" class="add-opt-btn" id="saveTitlePresetBtn" style="margin-top:6px;${((state.customTitle||'').trim() && !titleOptions.some(t=>t.trim()===state.customTitle.trim())) ? '' : 'display:none;'}">+ Save this as a preset</button>
       ` : ``}
     </div>
   `;
@@ -4236,7 +4237,25 @@ function wireQuote(main){
   };
   main.querySelector("#p_title_select").onchange = e=>{ state.titleChoice = e.target.value; renderQuote(main); };
   const customTitleInp = main.querySelector("#p_title_custom");
-  if(customTitleInp) customTitleInp.oninput = e=> state.customTitle = e.target.value;
+  if(customTitleInp) customTitleInp.oninput = e=>{
+    state.customTitle = e.target.value;
+    const btn = main.querySelector("#saveTitlePresetBtn");
+    if(btn){
+      const matches = (state.config.titleOptions||[]).some(t=>t.trim()===state.customTitle.trim());
+      btn.style.display = (state.customTitle.trim() && !matches) ? "" : "none";
+    }
+  };
+  const saveTitlePresetBtn = main.querySelector("#saveTitlePresetBtn");
+  if(saveTitlePresetBtn) saveTitlePresetBtn.onclick = ()=>{
+    const text = (state.customTitle||"").trim();
+    if(!text){ showToast("Type a custom title first"); return; }
+    const opts = state.config.titleOptions || (state.config.titleOptions = []);
+    if(opts.some(o=>o.trim()===text)){ showToast("Already saved in the list"); return; }
+    opts.push(text);
+    saveConfig();
+    renderQuote(main);
+    showToast("Added to proposal title list");
+  };
   main.querySelector("#closing_salutation").oninput = e=>{
     state.openingHeaderName = e.target.value;
     state.openingHeaderNameDirty = true;
