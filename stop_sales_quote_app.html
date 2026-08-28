@@ -210,6 +210,7 @@
 <div id="pdfPreviewModal"></div>
 <div id="deleteTypeConfirmModal"></div>
 <div id="exitConfirmModal"></div>
+<div id="importCategoryModal"></div>
 
 <!-- pdf.js, bundled inline so PDF-page-to-image preview rendering works fully offline -->
 <script type="text/plain" id="pdfjsLibSource">
@@ -895,6 +896,7 @@ let state = {
   quickDockCollapsed: false,
   deleteTypeConfirmId: null,
   exitConfirmOpen: false,
+  importCategoryModal: { open: false, step: "template", selectedTypeId: null },
   creatingType: false,
   newTypeName: "",
   newTypeSource: "blank"
@@ -1579,6 +1581,7 @@ function render(){
   renderPdfPreviewModal();
   renderDeleteTypeConfirmModal();
   renderExitConfirmModal();
+  renderImportCategoryModal();
 
   if(state.view === "syncSetup"){
     app.innerHTML = `
@@ -2962,6 +2965,7 @@ function renderAdmin(main){
     </div>
     ${body}
     <button class="add-cat-btn" data-action="add-cat">+ Add category</button>
+    <button class="add-cat-btn" data-action="import-cat" style="background:#fff;color:var(--navy);border:1.5px solid var(--navy);margin-top:8px;">+ Import category</button>
   `;
   main.innerHTML = html;
   wireAdmin(main);
@@ -3492,6 +3496,97 @@ function wireAdmin(main){
     state.adminSectionIndex = getAdminSections().length - 1; // jump to the new category
     render();
   };
+  const importCatBtn = main.querySelector('[data-action="import-cat"]');
+  if(importCatBtn) importCatBtn.onclick = ()=>{
+    state.importCategoryModal = { open: true, step: "template", selectedTypeId: null };
+    render();
+  };
+}
+
+/* ---------------- IMPORT CATEGORY (copy a category from another template) ---------------- */
+
+function renderImportCategoryModal(){
+  const host = document.getElementById("importCategoryModal");
+  if(!host) return;
+  const m = state.importCategoryModal;
+  if(!m || !m.open){ host.innerHTML = ""; host.style.display = "none"; return; }
+  host.style.display = "block";
+
+  let bodyHtml;
+  if(m.step === "template"){
+    bodyHtml = `
+      <div class="confirm-modal-title">Import category from…</div>
+      <div class="confirm-modal-body" style="margin-bottom:10px;">Pick which template to pull a category from.</div>
+      <div style="max-height:50vh;overflow-y:auto;">
+        ${state.proposalTypes.map(t=>`
+          <div class="type-card import-template-row" data-type="${t.id}" style="cursor:pointer;">
+            <div class="type-card-top"><div style="font-weight:800;">${escapeAttr(t.name)}</div></div>
+            <div class="type-card-meta">${(t.config.categories||[]).length} categor${(t.config.categories||[]).length===1?'y':'ies'}</div>
+          </div>
+        `).join("")}
+      </div>
+      <div class="confirm-modal-actions" style="margin-top:14px;">
+        <button type="button" class="btn btn-ghost" id="importCatCancelBtn" style="flex:1;">Cancel</button>
+      </div>
+    `;
+  } else {
+    const srcType = state.proposalTypes.find(t=>t.id===m.selectedTypeId);
+    const srcCats = srcType ? (srcType.config.categories||[]) : [];
+    bodyHtml = `
+      <div class="confirm-modal-title">Import from "${escapeAttr(srcType?srcType.name:'')}"</div>
+      <div class="confirm-modal-body" style="margin-bottom:10px;">Pick which category to copy into the template you're currently editing.</div>
+      <div style="max-height:50vh;overflow-y:auto;">
+        ${srcCats.length ? srcCats.map(c=>`
+          <div class="type-card import-category-row" data-cat="${c.id}" style="cursor:pointer;">
+            <div class="type-card-top"><div style="font-weight:800;">${escapeAttr(c.name)}</div></div>
+            <div class="type-card-meta">${(c.options||[]).length} option${(c.options||[]).length===1?'':'s'}</div>
+          </div>
+        `).join("") : `<div class="empty">This template has no categories yet.</div>`}
+      </div>
+      <div class="confirm-modal-actions" style="margin-top:14px;">
+        <button type="button" class="btn btn-ghost" id="importCatBackBtn" style="flex:1;">&larr; Back</button>
+        <button type="button" class="btn btn-ghost" id="importCatCancelBtn" style="flex:1;">Cancel</button>
+      </div>
+    `;
+  }
+
+  host.innerHTML = `
+    <div class="confirm-modal-backdrop">
+      <div class="confirm-modal" style="max-width:440px;">
+        ${bodyHtml}
+      </div>
+    </div>
+  `;
+
+  const cancelBtn = host.querySelector("#importCatCancelBtn");
+  if(cancelBtn) cancelBtn.onclick = ()=>{ state.importCategoryModal = { open:false, step:"template", selectedTypeId:null }; render(); };
+  const backBtn = host.querySelector("#importCatBackBtn");
+  if(backBtn) backBtn.onclick = ()=>{ state.importCategoryModal.step = "template"; state.importCategoryModal.selectedTypeId = null; render(); };
+
+  host.querySelectorAll(".import-template-row").forEach(row=>{
+    row.onclick = ()=>{
+      state.importCategoryModal.step = "category";
+      state.importCategoryModal.selectedTypeId = row.dataset.type;
+      render();
+    };
+  });
+  host.querySelectorAll(".import-category-row").forEach(row=>{
+    row.onclick = ()=>{
+      const srcType = state.proposalTypes.find(t=>t.id===state.importCategoryModal.selectedTypeId);
+      const srcCat = srcType && (srcType.config.categories||[]).find(c=>c.id===row.dataset.cat);
+      if(!srcCat) return;
+      // Deep copy so editing the imported category never touches the source
+      // template, and give it a fresh id so it doesn't collide with anything.
+      const copy = JSON.parse(JSON.stringify(srcCat));
+      copy.id = uid();
+      state.config.categories.push(copy);
+      saveConfig();
+      state.importCategoryModal = { open:false, step:"template", selectedTypeId:null };
+      state.adminSectionIndex = getAdminSections().length - 1; // jump to the newly imported category
+      render();
+      showToast(`Imported "${copy.name}"`);
+    };
+  });
 }
 
 function escapeAttr(s){
