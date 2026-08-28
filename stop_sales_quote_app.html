@@ -721,6 +721,7 @@ function arraysEqual(a,b){
 const DEFAULT_CONFIG = {
   titleOptions: [],
   openingHeaderOptions: [],
+  closingOptions: [],
   salesReps: [],
   profitOptions: [],
   laborRates: [],
@@ -980,6 +981,7 @@ function normalizeConfig(cfg){
   if(!cfg.laborRates) cfg.laborRates = JSON.parse(JSON.stringify(DEFAULT_CONFIG.laborRates));
   if(!cfg.noteOptions) cfg.noteOptions = JSON.parse(JSON.stringify(DEFAULT_CONFIG.noteOptions));
   if(!cfg.openingHeaderOptions) cfg.openingHeaderOptions = [];
+  if(!cfg.closingOptions) cfg.closingOptions = [];
   if(!cfg.salesReps) cfg.salesReps = [];
 
   // One-time cleanup: strip the old stock example values if a saved type still has them untouched.
@@ -2673,6 +2675,17 @@ function renderDocSettingsSection(ds){
         <div class="field"><label>Contact phone</label><input type="text" id="ds_phone" value="${escapeAttr(ds.contactPhone)}"></div>
       </div>
       <div class="field">
+        <label>Closing paragraph options</label>
+        <div class="hint" style="margin-top:-4px;margin-bottom:8px;">Reps can pick one of these from a dropdown on the New Proposal screen to load into the closing paragraph field, then edit it further if needed.</div>
+        ${(state.config.closingOptions||[]).map((t,ti)=>`
+          <div class="admin-opt-top" style="margin-bottom:7px;align-items:flex-start;">
+            <textarea class="closing-opt" data-idx="${ti}" rows="2" style="flex:1;">${escapeAttr(t)}</textarea>
+            <button class="rm" data-action="del-closing-opt" data-idx="${ti}">✕</button>
+          </div>
+        `).join("")}
+        <button class="add-opt-btn" data-action="add-closing-opt">+ Add closing paragraph option</button>
+      </div>
+      <div class="field">
         <label>Closing paragraph (use {phone} for the contact phone)</label>
         <textarea id="ds_closing" rows="3">${escapeAttr(ds.closingText)}</textarea>
         <div class="row2" style="margin-top:10px;">
@@ -2988,6 +3001,23 @@ function wireAdmin(main){
   const addOpeningHeaderBtn = main.querySelector('[data-action="add-opening-header"]');
   if(addOpeningHeaderBtn) addOpeningHeaderBtn.onclick = ()=>{
     state.config.openingHeaderOptions.push("Thank you for the opportunity to provide this proposal for...");
+    saveConfig(); render();
+  };
+  main.querySelectorAll(".closing-opt").forEach(inp=>{
+    inp.onchange = ()=>{
+      state.config.closingOptions[parseInt(inp.dataset.idx,10)] = inp.value;
+      saveConfig();
+    };
+  });
+  main.querySelectorAll('[data-action="del-closing-opt"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      state.config.closingOptions.splice(parseInt(btn.dataset.idx,10),1);
+      saveConfig(); render();
+    };
+  });
+  const addClosingOptBtn = main.querySelector('[data-action="add-closing-opt"]');
+  if(addClosingOptBtn) addClosingOptBtn.onclick = ()=>{
+    state.config.closingOptions.push("Thank you for this opportunity to be of service to you...");
     saveConfig(); render();
   };
   main.querySelectorAll(".rep-name-opt").forEach(inp=>{
@@ -3700,7 +3730,12 @@ function renderQuote(main){
       <div class="field"><label>Customer name (added to the start of the closing paragraph)</label>
         <input type="text" id="closing_salutation" value="${escapeAttr(state.openingHeaderName)}" placeholder="Customer name"></div>
       <div class="field"><label>Closing paragraph</label>
+        <select id="closing_select" style="margin-bottom:10px;">
+          <option value="">Select a pre-written closing paragraph…</option>
+          ${(state.config.closingOptions||[]).map((t,ti)=>`<option value="${ti}">${escapeAttr(t.length>70?t.slice(0,70)+"…":t)}</option>`).join("")}
+        </select>
         <textarea id="closing_text" rows="3">${escapeAttr(state.closingText)}</textarea>
+        <button type="button" class="add-opt-btn" id="saveClosingPresetBtn" style="margin-top:6px;">+ Save this as a preset</button>
       </div>
       ${(state.config.salesReps && state.config.salesReps.length) ? `
         <div class="field"><label>Sales rep</label>
@@ -3917,6 +3952,25 @@ function wireQuote(main){
     if(openingSalutationInp) openingSalutationInp.value = e.target.value;
   };
   main.querySelector("#closing_text").oninput = e=> state.closingText = e.target.value;
+  main.querySelector("#closing_select").onchange = e=>{
+    const idx = e.target.value;
+    if(idx !== ""){
+      const opts = state.config.closingOptions||[];
+      state.closingText = opts[parseInt(idx,10)] || "";
+      renderQuote(main);
+    }
+  };
+  const saveClosingPresetBtn = main.querySelector("#saveClosingPresetBtn");
+  if(saveClosingPresetBtn) saveClosingPresetBtn.onclick = ()=>{
+    const text = (state.closingText||"").trim();
+    if(!text){ showToast("Type a closing paragraph first"); return; }
+    const opts = state.config.closingOptions || (state.config.closingOptions = []);
+    if(opts.some(o=>o.trim()===text)){ showToast("Already saved in the list"); return; }
+    opts.push(text);
+    saveConfig();
+    renderQuote(main);
+    showToast("Added to closing paragraph list");
+  };
   const repSelect = main.querySelector("#rep_select");
   if(repSelect) repSelect.onchange = e=>{
     state.repChoice = e.target.value;
