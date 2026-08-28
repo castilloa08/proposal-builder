@@ -4946,7 +4946,7 @@ async function generatePdf(){
     const titleText = currentProposalTitle();
 
     let page = letterheadPage;
-    let y = height - 145;
+    let y = height - 131; // shifted up one line from the previous 145 so everything below starts (and cascades) higher up the page
     let pageCount = 1;
 
     function newPage(){
