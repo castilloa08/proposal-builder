@@ -870,7 +870,7 @@ let state = {
   config: null,
   loaded: false,
   selections: {},     // catId -> { optId: {checked, qty, bullets} }
-  customer: { name:"", business:"", address:"", phone:"", ext:"", email:"" },
+  customer: { name:"", business:"", address:"", city:"", state:"CA", zip:"", phone:"", ext:"", email:"" },
   rep: "", repTitle: "", repChoice: "", repFont: "standard",
   titleChoice: "",
   customTitle: "",
@@ -1070,7 +1070,7 @@ async function saveAllTypes(){
 function resetQuoteState(){
   state.tab = "quote";
   state.selections = {};
-  state.customer = { name:"", business:"", address:"", phone:"", ext:"", email:"" };
+  state.customer = { name:"", business:"", address:"", city:"", state:"CA", zip:"", phone:"", ext:"", email:"" };
   state.rep = ""; state.repTitle = "";
   state.customTitle = "";
   state.installTotal = ""; state.installDirty = false;
@@ -2394,7 +2394,7 @@ function editSavedProposal(detail){
   state.currentTypeId = type.id;
   state.config = type.config;
 
-  state.customer = Object.assign({ name:"", business:"", address:"", phone:"", ext:"", email:"" }, proposalData.customer||{});
+  state.customer = Object.assign({ name:"", business:"", address:"", city:"", state:"", zip:"", phone:"", ext:"", email:"" }, proposalData.customer||{});
   state.selections = proposalData.selections || {};
   state.rep = proposalData.rep || "";
   state.repTitle = proposalData.repTitle || "";
@@ -2536,7 +2536,7 @@ async function generatePartsListForSavedProposal(detail, mode){
   state.currentTypeId = type.id;
   state.config = type.config;
 
-  state.customer = Object.assign({ name:"", business:"", address:"", phone:"", ext:"", email:"" }, proposalData.customer||{});
+  state.customer = Object.assign({ name:"", business:"", address:"", city:"", state:"", zip:"", phone:"", ext:"", email:"" }, proposalData.customer||{});
   state.selections = proposalData.selections || {};
   state.rep = proposalData.rep || "";
   state.repTitle = proposalData.repTitle || "";
@@ -3489,6 +3489,14 @@ function escapeAttr(s){
 // Formats digits-only as (###) ###-#### progressively as the rep types,
 // stripping anything that isn't a digit (spaces, dashes, letters, etc.) and
 // dropping a leading "1" if a full 11-digit number gets pasted in.
+// Builds the "City, ST 12345" line printed under the street address —
+// gracefully drops whichever pieces are blank (e.g. just "City, CA" if no
+// zip was entered, or just the zip if that's all that's filled in).
+function customerCityStateZip(customer){
+  const cityState = [customer.city, customer.state].filter(x=>x && x.trim()).join(", ");
+  return [cityState, (customer.zip||"").trim()].filter(x=>x).join(" ").trim();
+}
+
 function formatPhoneNumber(raw){
   let digits = (raw||"").replace(/\D/g,"");
   if(digits.length === 11 && digits[0] === "1") digits = digits.slice(1);
@@ -3582,7 +3590,15 @@ function renderQuote(main){
       <div class="field"><label>Business name (optional)</label>
         <input type="text" id="c_business" value="${escapeAttr(state.customer.business)}" placeholder="Leaves this line off the quote if blank"></div>
       <div class="field"><label>Service address</label>
-        <input type="text" id="c_address" value="${escapeAttr(state.customer.address)}" placeholder="Street address, City, State"></div>
+        <input type="text" id="c_address" value="${escapeAttr(state.customer.address)}" placeholder="Street address"></div>
+      <div class="row2">
+        <div class="field"><label>City</label>
+          <input type="text" id="c_city" value="${escapeAttr(state.customer.city)}" placeholder="City"></div>
+        <div class="field"><label>State</label>
+          <input type="text" id="c_state" value="${escapeAttr(state.customer.state)}" placeholder="e.g. CA" maxlength="2" style="text-transform:uppercase;"></div>
+      </div>
+      <div class="field"><label>Zip code</label>
+        <input type="text" id="c_zip" inputmode="numeric" value="${escapeAttr(state.customer.zip)}" placeholder="e.g. 93257" maxlength="10"></div>
       <div class="row2">
         <div class="field"><label>Phone number</label>
           <input type="tel" id="c_phone" value="${escapeAttr(state.customer.phone)}" placeholder="(555) 555-0123"></div>
@@ -3904,6 +3920,17 @@ function wireQuote(main){
   };
   main.querySelector("#c_business").oninput = e=> state.customer.business = e.target.value;
   main.querySelector("#c_address").oninput = e=> state.customer.address = e.target.value;
+  main.querySelector("#c_city").oninput = e=> state.customer.city = e.target.value;
+  main.querySelector("#c_state").oninput = e=>{
+    const upper = e.target.value.toUpperCase();
+    e.target.value = upper;
+    state.customer.state = upper;
+  };
+  main.querySelector("#c_zip").oninput = e=>{
+    const digitsOnly = e.target.value.replace(/[^0-9-]/g,"");
+    e.target.value = digitsOnly;
+    state.customer.zip = digitsOnly;
+  };
   main.querySelector("#c_phone").oninput = e=>{
     const formatted = formatPhoneNumber(e.target.value);
     e.target.value = formatted;
@@ -4526,6 +4553,14 @@ async function generatePartsListPdf(mode){
         y -= 14;
       });
     }
+    { const cityStateZip = customerCityStateZip(state.customer);
+      if(cityStateZip){
+        wrap(cityStateZip, font, 10.5, 400).forEach(l=>{
+          page.drawText(l, { x: marginX, y, size: 10.5, font, color: black });
+          y -= 14;
+        });
+      }
+    }
     if(state.customer.phone){
       const phoneLine = state.customer.phone + (state.customer.ext ? ` ext. ${state.customer.ext}` : "");
       page.drawText(phoneLine, { x: marginX, y, size: 10.5, font, color: black }); y -= 14;
@@ -4670,6 +4705,14 @@ async function generatePdf(){
         page.drawText(line, { x: marginX, y, size: 10.5, font, color: black });
         y -= 14;
       });
+    }
+    { const cityStateZip = customerCityStateZip(state.customer);
+      if(cityStateZip){
+        wrapText(cityStateZip, font, 10.5, 320).forEach(line=>{
+          page.drawText(line, { x: marginX, y, size: 10.5, font, color: black });
+          y -= 14;
+        });
+      }
     }
     if(state.customer.phone){
       const phoneLine = state.customer.phone + (state.customer.ext ? ` ext. ${state.customer.ext}` : "");
