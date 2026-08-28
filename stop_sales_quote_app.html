@@ -3612,7 +3612,7 @@ function renderQuote(main){
       <div class="field" style="margin-top:10px;">
         <textarea id="p_opening_text" rows="3" placeholder="Type the opening header text shown at the top of the proposal">${escapeAttr(state.openingHeader)}</textarea>
       </div>
-      <button type="button" class="add-opt-btn" id="saveOpeningHeaderPresetBtn" style="margin-top:6px;">+ Save this as a preset</button>
+      <button type="button" class="add-opt-btn" id="saveOpeningHeaderPresetBtn" style="margin-top:6px;${((state.openingHeader||'').trim() && !openingHeaderOptions.some(o=>o.trim()===state.openingHeader.trim())) ? '' : 'display:none;'}">+ Save this as a preset</button>
     </div>
 
     <h2 class="section-title">Proposal Title</h2>
@@ -3735,7 +3735,7 @@ function renderQuote(main){
           ${(state.config.closingOptions||[]).map((t,ti)=>`<option value="${ti}">${escapeAttr(t.length>70?t.slice(0,70)+"…":t)}</option>`).join("")}
         </select>
         <textarea id="closing_text" rows="3">${escapeAttr(state.closingText)}</textarea>
-        <button type="button" class="add-opt-btn" id="saveClosingPresetBtn" style="margin-top:6px;">+ Save this as a preset</button>
+        <button type="button" class="add-opt-btn" id="saveClosingPresetBtn" style="margin-top:6px;${((state.closingText||'').trim() && !(state.config.closingOptions||[]).some(o=>o.trim()===state.closingText.trim())) ? '' : 'display:none;'}">+ Save this as a preset</button>
       </div>
       ${(state.config.salesReps && state.config.salesReps.length) ? `
         <div class="field"><label>Sales rep</label>
@@ -3930,7 +3930,14 @@ function wireQuote(main){
       renderQuote(main);
     }
   };
-  main.querySelector("#p_opening_text").oninput = e=> state.openingHeader = e.target.value;
+  main.querySelector("#p_opening_text").oninput = e=>{
+    state.openingHeader = e.target.value;
+    const btn = main.querySelector("#saveOpeningHeaderPresetBtn");
+    if(btn){
+      const matches = (state.config.openingHeaderOptions||[]).some(o=>o.trim()===state.openingHeader.trim());
+      btn.style.display = (state.openingHeader.trim() && !matches) ? "" : "none";
+    }
+  };
   const saveOpeningPresetBtn = main.querySelector("#saveOpeningHeaderPresetBtn");
   if(saveOpeningPresetBtn) saveOpeningPresetBtn.onclick = ()=>{
     const text = (state.openingHeader||"").trim();
@@ -3951,7 +3958,14 @@ function wireQuote(main){
     const openingSalutationInp = main.querySelector("#p_opening_salutation");
     if(openingSalutationInp) openingSalutationInp.value = e.target.value;
   };
-  main.querySelector("#closing_text").oninput = e=> state.closingText = e.target.value;
+  main.querySelector("#closing_text").oninput = e=>{
+    state.closingText = e.target.value;
+    const btn = main.querySelector("#saveClosingPresetBtn");
+    if(btn){
+      const matches = (state.config.closingOptions||[]).some(o=>o.trim()===state.closingText.trim());
+      btn.style.display = (state.closingText.trim() && !matches) ? "" : "none";
+    }
+  };
   main.querySelector("#closing_select").onchange = e=>{
     const idx = e.target.value;
     if(idx !== ""){
